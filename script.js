@@ -5,6 +5,21 @@ let detectedLanguage = 'en';
 
 let allItems = {};
 let filteredItems = {};
+let registrationOrderIndex = null; // Registration order index map
+
+function ensureRegistrationOrderIndex() {
+    // Builds an index map that preserves the insertion order from items.js
+    if (!registrationOrderIndex && typeof items !== 'undefined') {
+        registrationOrderIndex = {};
+        Object.keys(items).forEach((key, idx) => {
+            registrationOrderIndex[key] = idx;
+        });
+        console.log('Registration order index built', {
+            total: Object.keys(registrationOrderIndex).length,
+            sample: Object.entries(registrationOrderIndex).slice(0, 5)
+        });
+    }
+}
 
 function detectBrowserLanguage() {
     return detectAndSetLanguage();
@@ -87,6 +102,11 @@ function initializeSearchAndFilter() {
     
     if (sortFilter) {
         sortFilter.addEventListener('change', performSearch);
+        // Set default sort to 'created' if available
+        if (sortFilter.querySelector('option[value="created"]')) {
+            sortFilter.value = 'created';
+            console.log('Default sort set to created');
+        }
     }
 }
 
@@ -94,7 +114,7 @@ function performSearch() {
     const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
     const typeFilter = document.getElementById('typeFilter')?.value || 'all';
     const flagFilter = document.getElementById('flagFilter')?.value || 'all';
-    const sortBy = document.getElementById('sortFilter')?.value || 'name';
+    const sortBy = document.getElementById('sortFilter')?.value || 'created';
     
     console.log('Search performed:', { searchTerm, typeFilter, flagFilter, sortBy });
     console.log('allItems count:', Object.keys(allItems).length);
@@ -105,6 +125,7 @@ function performSearch() {
     }
     
     filteredItems = { ...allItems };
+    ensureRegistrationOrderIndex();
     
     if (searchTerm) {
         console.log('Filtering by search term:', searchTerm);
@@ -191,6 +212,11 @@ function performSearch() {
                     const typeB = itemB.type || 'passive';
                     return typeA.localeCompare(typeB);
                 
+                case 'created':
+                    // Sort by registration order from items.js
+                    const indexA = (registrationOrderIndex && typeof registrationOrderIndex[keyA] !== 'undefined') ? registrationOrderIndex[keyA] : Number.MAX_SAFE_INTEGER;
+                    const indexB = (registrationOrderIndex && typeof registrationOrderIndex[keyB] !== 'undefined') ? registrationOrderIndex[keyB] : Number.MAX_SAFE_INTEGER;
+                    return indexA - indexB;
                 default:
                     return 0;
             }
@@ -327,11 +353,12 @@ function updateItemsDisplay() {
         if (Object.keys(allItems).length === 0) {
             allItems = items;
         }
+        ensureRegistrationOrderIndex();
         
         const searchTerm = document.getElementById('searchInput')?.value || '';
         const typeFilter = document.getElementById('typeFilter')?.value || 'all';
         const flagFilter = document.getElementById('flagFilter')?.value || 'all';
-        const sortBy = document.getElementById('sortFilter')?.value || 'name';
+        const sortBy = document.getElementById('sortFilter')?.value || 'created';
         
         const hasActiveFilters = searchTerm || typeFilter !== 'all' || flagFilter !== 'all';
         const hasSorting = true;
@@ -356,6 +383,12 @@ function updateItemsDisplay() {
             if (!isWorkingNowA && isWorkingNowB) return -1;
             if (isWorkingNowA && isWorkingNowB) return 0;
             
+            if (sortBy === 'created') {
+                // Keep working items priority, then apply created order
+                const indexA = (registrationOrderIndex && typeof registrationOrderIndex[keyA] !== 'undefined') ? registrationOrderIndex[keyA] : Number.MAX_SAFE_INTEGER;
+                const indexB = (registrationOrderIndex && typeof registrationOrderIndex[keyB] !== 'undefined') ? registrationOrderIndex[keyB] : Number.MAX_SAFE_INTEGER;
+                return indexA - indexB;
+            }
             return 0;
         });
         

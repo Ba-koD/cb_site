@@ -35,6 +35,25 @@ def clean_eid_text(text):
     text = text.strip()
     return text
 
+def extract_plain_quoted_value(block, key):
+    """Extract plain text between double quotes after key= without using regex."""
+    try:
+        idx = block.find(key)
+        if idx == -1:
+            return None
+        eq = block.find('=', idx)
+        if eq == -1:
+            return None
+        start = block.find('"', eq)
+        if start == -1:
+            return None
+        end = block.find('"', start + 1)
+        if end == -1:
+            return None
+        return block[start + 1:end]
+    except Exception:
+        return None
+
 def parse_pool_array(pool_data):
     """parse the pool array with support for both simple and complex pool entries"""
     pools = []
@@ -121,9 +140,22 @@ def parse_lua_file(file_path):
     
     print(f"found item matches: {len(item_matches)}")
     
+    # keys we should never treat as top-level items (nested tables/fields)
+    nested_keys_to_skip = set([
+        'origin', 'eid', 'eids', 'name', 'names', 'description', 'descriptions',
+        'callbacks', 'onBeforeChange', 'onAfterChange', 'entity', 'gibs',
+        'pool', 'pools', 'tags', 'cache', 'gfx', 'specials'
+    ])
+
     for match in item_matches:
         name = match.group(1)
         print(f"processing item: {name}")
+        if name in nested_keys_to_skip:
+            print(f"  skipping {name} (nested table)")
+            continue
+        if name.lower() == name:
+            print(f"  skipping {name} (lowercase key, likely nested)")
+            continue
         
         # find the item block start and end
         item_start = match.end() - 1  # { position
@@ -389,6 +421,7 @@ def parse_lua_file(file_path):
         origin_match_trinket = re.search(r'origin\s*=\s*TrinketType\.TRINKET_(\w+)', item_data)
         origin_match_card = re.search(r'origin\s*=\s*Card\.CARD_(\w+)', item_data)
         origin_match_pill = re.search(r'origin\s*=\s*PillEffect\.PILLEFFECT_(\w+)', item_data)
+        origin_table_match = re.search(r'origin\s*=\s*{', item_data)
         if origin_match_trinket:
             item_info['origin'] = origin_match_trinket.group(1)
             item_info['originType'] = 'trinket'
@@ -405,6 +438,37 @@ def parse_lua_file(file_path):
             item_info['origin'] = origin_match_pill.group(1)
             item_info['originType'] = 'pill'
             print(f"  Origin (Pill): {item_info['origin']}")
+        elif origin_table_match:
+            # Parse origin = { type="trinket"|"collectible", name="..." } or { trinket="..." } / { collectible="..." }
+            o_start = origin_table_match.end() - 1
+            o_end = find_matching_brace(item_data, o_start)
+            if o_end != -1:
+                o_data = item_data[o_start+1:o_end]
+                print(f"  Origin table: {o_data}")
+                # Use plain extraction for quoted values
+                o_type_raw = extract_plain_quoted_value(o_data, 'type')
+                o_name_raw = extract_plain_quoted_value(o_data, 'name')
+                o_trinket_raw = extract_plain_quoted_value(o_data, 'trinket')
+                o_collectible_raw = extract_plain_quoted_value(o_data, 'collectible')
+                origin_type = None
+                origin_name = None
+                if o_trinket_raw:
+                    origin_type = 'trinket'
+                    origin_name = o_trinket_raw
+                elif o_collectible_raw:
+                    origin_type = 'collectible'
+                    origin_name = o_collectible_raw
+                else:
+                    if o_type_raw:
+                        origin_type = o_type_raw.lower()
+                    if o_name_raw:
+                        origin_name = o_name_raw
+                if origin_name:
+                    # Keep plain text name as-is for items.js (do not regex-sanitize)
+                    item_info['originNameRaw'] = origin_name
+                    if origin_type in ('trinket', 'collectible'):
+                        item_info['originType'] = origin_type
+                    print(f"  Origin (table): type={item_info.get('originType')}, name={origin_name}")
         
         # extract flag
         flag_match = re.search(r'flag\s*=\s*"([^"]+)"', item_data)
@@ -542,17 +606,21 @@ const items = {
             #   Trinket => T:
             #   Card => K:
             #   Pill => P:
+            # Build origin field for items.js
             origin_val = item_info.get('origin', '')
-            if origin_val:
-                origin_type = item_info.get('originType')
-                if origin_type == 'trinket':
-                    prefix = 'T'
-                elif origin_type == 'card':
-                    prefix = 'K'
-                elif origin_type == 'pill':
-                    prefix = 'P'
-                else:
-                    prefix = 'C'
+            origin_name_override = item_info.get('originNameRaw')
+            origin_type = item_info.get('originType')
+            if origin_type == 'trinket':
+                prefix = 'T'
+            elif origin_type == 'card':
+                prefix = 'K'
+            elif origin_type == 'pill':
+                prefix = 'P'
+            else:
+                prefix = 'C'
+            if origin_name_override:
+                origin_encoded = f"{prefix}:{origin_name_override}"
+            elif origin_val:
                 origin_encoded = f"{prefix}:{origin_val}"
             else:
                 origin_encoded = ''
@@ -654,7 +722,10 @@ def main():
     
     print(f"found items: {len(items)}")
     for name, info in items.items():
-        print(f"  - {name}: {info.get('name', 'Unknown')} (ID: {info.get('id', 'Unknown')})")
+        display_name = None
+        if isinstance(info.get('names'), dict):
+            display_name = info['names'].get('kr') or info['names'].get('en')
+        print(f"  - {name}: {display_name or ''}")
     
     # create the items.js file
     create_items_js(items, items_js_path)

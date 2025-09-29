@@ -319,6 +319,11 @@ main {
     background: #2563eb;
 }
 
+/* Trinket type badge background */
+.item-type.trinket {
+    background: #a855f7;
+}
+
 .quality-stars {
     margin-top: 5px;
     color: #fbbf24;
