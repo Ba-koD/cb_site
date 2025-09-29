@@ -14,15 +14,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout site repo
+      - name: Checkout site repo (cb_site)
         uses: actions/checkout@v4
 
       - name: Checkout source repo (conch_blessing)
         uses: actions/checkout@v4
         with:
-          repository: YOUR_ORG_OR_USER/conch_blessing
+          repository: ba-kod/conch_blessing
           path: source
-          token: ${{ secrets.SOURCE_REPO_TOKEN }}
+          # Public이면 token 생략 가능. 필요시:
+          # token: ${{ secrets.SOURCE_REPO_TOKEN }}
+
+      - name: Debug tree
+        run: |
+          echo "Site repo: $GITHUB_REPOSITORY"
+          ls -lah
+          ls -lah source || true
+          ls -lah source/scripts || true
+          ls -lah source/resources/gfx/items/collectibles || true
+          ls -lah source/resources/gfx/items/trinkets || true
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -34,20 +44,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install pillow requests beautifulsoup4
 
-      - name: Generate items.js & itemmap.js
+      # build_id_pools.py는 cb_site에 있고 외부 문서만 읽음 → cb_site 루트에서 실행
+      - name: Generate itemmap.js (cb_site)
+        run: |
+          python3 build_id_pools.py --itemmap-out itemmap.js
+
+      # generate_items_js.py는 conch_blessing의 Lua를 파싱해야 함
+      # source 디렉터리로 들어가서 cb_site의 스크립트를 상대경로로 실행
+      - name: Generate items.js (from source Lua using cb_site script)
         working-directory: source
         run: |
-          python3 generate_items_js.py
-          python3 build_id_pools.py --itemmap-out itemmap.js
+          python3 ../generate_items_js.py
+          test -f items.js && echo "items.js generated in source/"
 
       - name: Prepare site artifact
         run: |
           rm -rf build && mkdir -p build
+          # 1) UI 고정 파일(cb_site 소유)
           cp -v index.html styles.css texts.js script.js favicon.ico build/
+          # 2) 이미지(conch_blessing → build)
           mkdir -p build/resources/gfx/items/collectibles build/resources/gfx/items/trinkets
           rsync -a --delete source/resources/gfx/items/collectibles/ build/resources/gfx/items/collectibles/
           rsync -a --delete source/resources/gfx/items/trinkets/ build/resources/gfx/items/trinkets/
-          cp -v source/items.js source/itemmap.js build/
+          # 3) 생성 산출물
+          cp -v source/items.js build/
+          cp -v itemmap.js build/
+          echo "Build tree:" && find build -maxdepth 3 -type f | sort
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
