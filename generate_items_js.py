@@ -440,6 +440,7 @@ def parse_lua_file(file_path):
             print(f"  Origin (Pill): {item_info['origin']}")
         elif origin_table_match:
             # Parse origin = { type="trinket"|"collectible", name="..." } or { trinket="..." } / { collectible="..." }
+            # or origin = { id = TrinketType.TRINKET_XXX, type = "trinket" }
             o_start = origin_table_match.end() - 1
             o_end = find_matching_brace(item_data, o_start)
             if o_end != -1:
@@ -450,9 +451,31 @@ def parse_lua_file(file_path):
                 o_name_raw = extract_plain_quoted_value(o_data, 'name')
                 o_trinket_raw = extract_plain_quoted_value(o_data, 'trinket')
                 o_collectible_raw = extract_plain_quoted_value(o_data, 'collectible')
+                
+                # Check for id = TrinketType.TRINKET_XXX or CollectibleType.COLLECTIBLE_XXX pattern
+                id_trinket_match = re.search(r'id\s*=\s*TrinketType\.TRINKET_(\w+)', o_data)
+                id_collectible_match = re.search(r'id\s*=\s*CollectibleType\.COLLECTIBLE_(\w+)', o_data)
+                id_card_match = re.search(r'id\s*=\s*Card\.CARD_(\w+)', o_data)
+                id_pill_match = re.search(r'id\s*=\s*PillEffect\.PILLEFFECT_(\w+)', o_data)
+                
                 origin_type = None
                 origin_name = None
-                if o_trinket_raw:
+                
+                # Check id= patterns first
+                if id_trinket_match:
+                    origin_type = 'trinket'
+                    origin_name = id_trinket_match.group(1)
+                elif id_collectible_match:
+                    origin_type = 'collectible'
+                    origin_name = id_collectible_match.group(1)
+                elif id_card_match:
+                    origin_type = 'card'
+                    origin_name = id_card_match.group(1)
+                elif id_pill_match:
+                    origin_type = 'pill'
+                    origin_name = id_pill_match.group(1)
+                # Then check quoted patterns
+                elif o_trinket_raw:
                     origin_type = 'trinket'
                     origin_name = o_trinket_raw
                 elif o_collectible_raw:
@@ -463,10 +486,15 @@ def parse_lua_file(file_path):
                         origin_type = o_type_raw.lower()
                     if o_name_raw:
                         origin_name = o_name_raw
+                
+                # Override type if explicitly specified in the table
+                if o_type_raw:
+                    origin_type = o_type_raw.lower()
+                
                 if origin_name:
                     # Keep plain text name as-is for items.js (do not regex-sanitize)
                     item_info['originNameRaw'] = origin_name
-                    if origin_type in ('trinket', 'collectible'):
+                    if origin_type in ('trinket', 'collectible', 'card', 'pill'):
                         item_info['originType'] = origin_type
                     print(f"  Origin (table): type={item_info.get('originType')}, name={origin_name}")
         
@@ -489,15 +517,28 @@ def parse_lua_file(file_path):
                 
                 synergies = {}
                 synergy_types = {}
-                # [CollectibleType.COLLECTIBLE_XXX] and [TrinketType.TRINKET_XXX] blocks
-                synergy_pattern_coll = r'\[CollectibleType\.COLLECTIBLE_(\w+)\]\s*=\s*{'
-                synergy_pattern_trinket = r'\[TrinketType\.TRINKET_(\w+)\]\s*=\s*{'
-                synergy_matches = list(re.finditer(synergy_pattern_coll, synergies_data))
-                synergy_matches_tr = list(re.finditer(synergy_pattern_trinket, synergies_data))
+                # Support multiple patterns:
+                # Old: [CollectibleType.COLLECTIBLE_XXX] = { ... }
+                # New: [{ id = CollectibleType.COLLECTIBLE_XXX, type = "collectible" }] = { ... }
+                # Custom: [{ type = "collectible", name = "XXX" }] = { ... }
+                synergy_pattern_coll_old = r'\[CollectibleType\.COLLECTIBLE_(\w+)\]\s*=\s*{'
+                synergy_pattern_trinket_old = r'\[TrinketType\.TRINKET_(\w+)\]\s*=\s*{'
+                synergy_pattern_coll_new = r'\[\s*{\s*id\s*=\s*CollectibleType\.COLLECTIBLE_(\w+)\s*,\s*type\s*=\s*"collectible"\s*}\s*\]\s*=\s*{'
+                synergy_pattern_trinket_new = r'\[\s*{\s*id\s*=\s*TrinketType\.TRINKET_(\w+)\s*,\s*type\s*=\s*"trinket"\s*}\s*\]\s*=\s*{'
+                # Custom item patterns (for modded items)
+                synergy_pattern_coll_custom = r'\[\s*{\s*type\s*=\s*"(?:collectible|passive|active)"\s*,\s*name\s*=\s*"([^"]+)"\s*}\s*\]\s*=\s*{'
+                synergy_pattern_trinket_custom = r'\[\s*{\s*type\s*=\s*"trinket"\s*,\s*name\s*=\s*"([^"]+)"\s*}\s*\]\s*=\s*{'
                 
-                print(f"    Synergy pattern (collectible): {synergy_pattern_coll}")
-                print(f"    Synergy pattern (trinket): {synergy_pattern_trinket}")
-                print(f"    Synergies data to search: {synergies_data}")
+                # Find all matches for all patterns
+                synergy_matches = list(re.finditer(synergy_pattern_coll_old, synergies_data))
+                synergy_matches += list(re.finditer(synergy_pattern_coll_new, synergies_data))
+                synergy_matches += list(re.finditer(synergy_pattern_coll_custom, synergies_data))
+                synergy_matches_tr = list(re.finditer(synergy_pattern_trinket_old, synergies_data))
+                synergy_matches_tr += list(re.finditer(synergy_pattern_trinket_new, synergies_data))
+                synergy_matches_tr += list(re.finditer(synergy_pattern_trinket_custom, synergies_data))
+                
+                print(f"    Synergy patterns: old=[XXX], new=[{{id=XXX,type=...}}], custom=[{{type=...,name=...}}]")
+                print(f"    Found {len(synergy_matches)} collectible synergies, {len(synergy_matches_tr)} trinket synergies")
                 
                 for match in synergy_matches:
                     synergy_item = match.group(1)
@@ -508,11 +549,33 @@ def parse_lua_file(file_path):
                         block_content = synergies_data[block_start+1:block_end]
                         print(f"    Block content: {block_content}")
                         synergy_desc = {}
-                        for lang_match in re.finditer(r'(\w+)\s*=\s*"([^"]+)"', block_content):
+                        # Support multiple formats:
+                        # 1. kr = "text"
+                        # 2. kr = {"text1", "text2"}
+                        # 3. kr = "text1", "text2", "text3" (consecutive strings)
+                        for lang_match in re.finditer(r'(\w+)\s*=', block_content):
                             lang = lang_match.group(1)
-                            text = lang_match.group(2)
-                            synergy_desc[lang] = text
-                            print(f"    Synergy {synergy_item} ({lang}): {text}")
+                            lang_start = lang_match.end()
+                            
+                            # Find all strings after this lang= until next lang= or end
+                            next_lang_match = re.search(r'\w+\s*=', block_content[lang_start:])
+                            if next_lang_match:
+                                lang_section = block_content[lang_start:lang_start + next_lang_match.start()]
+                            else:
+                                lang_section = block_content[lang_start:]
+                            
+                            # Extract all quoted strings in this section
+                            texts = re.findall(r'"([^"]+)"', lang_section)
+                            if texts:
+                                # Remove # prefix from texts (Isaac's line break marker)
+                                cleaned_texts = []
+                                for text in texts:
+                                    # Remove leading # and whitespace
+                                    cleaned_text = re.sub(r'^\s*#\s*', '', text)
+                                    cleaned_texts.append(cleaned_text)
+                                # Join with newline for multi-line display
+                                synergy_desc[lang] = '\n'.join(cleaned_texts)
+                                print(f"    Synergy {synergy_item} ({lang}): {cleaned_texts}")
                         synergies[synergy_item] = synergy_desc
                         synergy_types[synergy_item] = 'collectible'
                     else:
@@ -527,11 +590,29 @@ def parse_lua_file(file_path):
                         block_content = synergies_data[block_start+1:block_end]
                         print(f"    Block content: {block_content}")
                         synergy_desc = {}
-                        for lang_match in re.finditer(r'(\w+)\s*=\s*"([^"]+)"', block_content):
+                        # Support multiple formats (same as collectible)
+                        for lang_match in re.finditer(r'(\w+)\s*=', block_content):
                             lang = lang_match.group(1)
-                            text = lang_match.group(2)
-                            synergy_desc[lang] = text
-                            print(f"    Synergy {synergy_item} ({lang}): {text}")
+                            lang_start = lang_match.end()
+                            
+                            # Find all strings after this lang= until next lang= or end
+                            next_lang_match = re.search(r'\w+\s*=', block_content[lang_start:])
+                            if next_lang_match:
+                                lang_section = block_content[lang_start:lang_start + next_lang_match.start()]
+                            else:
+                                lang_section = block_content[lang_start:]
+                            
+                            # Extract all quoted strings in this section
+                            texts = re.findall(r'"([^"]+)"', lang_section)
+                            if texts:
+                                # Remove # prefix from texts (Isaac's line break marker)
+                                cleaned_texts = []
+                                for text in texts:
+                                    # Remove leading # and whitespace
+                                    cleaned_text = re.sub(r'^\s*#\s*', '', text)
+                                    cleaned_texts.append(cleaned_text)
+                                synergy_desc[lang] = '\n'.join(cleaned_texts)
+                                print(f"    Synergy {synergy_item} ({lang}): {cleaned_texts}")
                         synergies[synergy_item] = synergy_desc
                         synergy_types[synergy_item] = 'trinket'
                     else:
