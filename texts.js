@@ -136,16 +136,22 @@ const texts = {
 };
 
 // 언어 감지 및 자동 선택 함수
+// 브라우저는 한국어를 ko / ko-KR로 알려 주지만 이 사이트의 언어 키는 kr이다.
+const BROWSER_LANGUAGE_ALIASES = { ko: 'kr' };
+
 function detectAndSetLanguage() {
-    const browserLang = navigator.language || navigator.userLanguage;
-    const langCode = browserLang.split('-')[0].toLowerCase();
-    
-    // 지원하는 언어인지 확인
-    if (texts[langCode]) {
-        return langCode;
-    } else {
-        return 'en'; // 기본값은 영어
+    // 선호 언어 목록을 순서대로 보고 지원하는 첫 언어를 고른다.
+    const preferred = (navigator.languages && navigator.languages.length)
+        ? navigator.languages
+        : [navigator.language || navigator.userLanguage || 'en'];
+    for (const tag of preferred) {
+        const code = String(tag).split('-')[0].toLowerCase();
+        const lang = BROWSER_LANGUAGE_ALIASES[code] || code;
+        if (texts[lang]) {
+            return lang;
+        }
     }
+    return 'en'; // 기본값은 영어
 }
 
 // 텍스트 가져오기 함수

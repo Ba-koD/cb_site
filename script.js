@@ -27,7 +27,11 @@ function detectBrowserLanguage() {
 
 function changeLanguage(lang) {
     currentLanguage = lang;
-    
+    if (lang === 'auto') {
+        // Re-detect: after a manual choice, detectedLanguage still holds that choice.
+        detectedLanguage = detectBrowserLanguage();
+    }
+
     const languageSelect = document.getElementById('languageSelect');
     if (languageSelect) {
         languageSelect.value = lang;
