@@ -57,6 +57,10 @@
         K: buildLookup(window.CARD_ID_POOL),
         P: buildLookup(window.PILL_ID_POOL)
     };
+    const VANILLA = window.VANILLA_ITEMS || {};
+    const VANILLA_BY_ENUM = Object.fromEntries(Object.entries(VANILLA).map(([key, item]) =>
+        [`${key.split(':')[0]}:${item.enum}`, item]));
+    const normalizeSearch = value => String(value || '').normalize('NFC').toLowerCase();
 
     // ---------- state ----------
     const state = { language: 'auto', detected: 'en', query: '', flag: 'all', pinned: null, preview: null, sheetKey: null };
@@ -75,7 +79,7 @@
     const flagColor = flag => FLAG_COLORS[flag] || 'transparent';
     // A missing sprite (work-in-progress items have none yet) becomes the name's first letter.
     const sprite = (item, size) =>
-        `<img class="sprite" src="${escapeHtml(item.gfx || `resources/gfx/items/collectibles/${item.key.toLowerCase()}.png`)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" data-initial="${escapeHtml(Array.from(itemName(item))[0] || '?')}">`;
+        `<img class="sprite${item.spriteFrame ? ' sprite-strip' : ''}" src="${escapeHtml(item.gfx || `resources/gfx/items/collectibles/${item.key.toLowerCase()}.png`)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" data-initial="${escapeHtml(Array.from(itemName(item))[0] || '?')}">`;
     document.addEventListener('error', event => {
         const img = event.target;
         if (!(img instanceof HTMLImageElement) || !img.classList.contains('sprite')) return;
@@ -91,10 +95,13 @@
 
     // A reference such as "C:DEAD_EYE" (origin) or a synergy key: this mod's item, or a vanilla one.
     function resolveReference(prefix, raw) {
-        const ownKey = BY_ENGLISH_NAME[String(raw).toLowerCase()];
+        const ownKey = BY_KEY[raw] ? raw : BY_ENGLISH_NAME[String(raw).toLowerCase()];
         if (ownKey) return { own: BY_KEY[ownKey] };
-        const id = ID_LOOKUP[prefix] && ID_LOOKUP[prefix][raw];
-        return { label: titleCase(raw), id: id ? `${prefix === 'T' ? 't' : prefix === 'K' ? 'k' : prefix === 'P' ? 'p' : 'c'}${id}` : '' };
+        const vanilla = VANILLA_BY_ENUM[`${prefix}:${raw}`];
+        const id = vanilla ? vanilla.id : ID_LOOKUP[prefix] && ID_LOOKUP[prefix][raw];
+        const metadata = vanilla || VANILLA[`${prefix}:${id}`];
+        return { label: metadata ? itemName(metadata) : titleCase(raw), vanilla: metadata,
+            id: id !== undefined ? `${prefix === 'T' ? 't' : prefix === 'K' ? 'k' : prefix === 'P' ? 'p' : 'c'}${id}` : '' };
     }
     function originOf(item) {
         if (!item.origin) return null;
@@ -109,14 +116,15 @@
     }
 
     function matchesQuery(item) {
-        const query = state.query.trim().toLowerCase();
+        const query = normalizeSearch(state.query.trim());
         if (!query) return true;
         const origin = originOf(item);
         const haystack = [
             item.key, item.names && item.names.en, item.names && item.names.kr, localized(item, 'descriptions'),
-            origin && (origin.own ? itemName(origin.own) : origin.label), ...effects(item)
-        ].join('\n').toLowerCase();
-        return haystack.includes(query);
+            origin && (origin.own ? Object.values(origin.own.names || {}).join(' ') : origin.label),
+            origin && origin.vanilla && Object.values(origin.vanilla.names).join(' '), ...effects(item)
+        ].join('\n');
+        return normalizeSearch(haystack).includes(query);
     }
     const matchesFlag = item => state.flag === 'all' || item.flag === state.flag;
     const isVisible = item => matchesQuery(item) && matchesFlag(item);
@@ -194,10 +202,26 @@
     const stars = quality => (typeof quality === 'number'
         ? `<span class="stars" aria-label="Quality ${quality}">${'★'.repeat(quality)}<i>${'★'.repeat(Math.max(0, 4 - quality))}</i></span>` : '');
     const itemLink = item => `<button type="button" class="link" data-goto="${escapeHtml(item.key)}">${sprite(item, 28)}${escapeHtml(itemName(item))}</button>`;
-    const referenceHtml = ref => (ref.own ? itemLink(ref.own)
-        : `<span class="node">${escapeHtml(ref.label)}</span>${ref.id ? `<span class="muted">${escapeHtml(ref.id)}</span>` : ''}`);
+    const referenceHtml = ref => {
+        if (ref.own) return itemLink(ref.own);
+        const otherName = ref.vanilla && ref.vanilla.names[lang() === 'kr' ? 'en' : 'kr'];
+        const secondary = [otherName !== ref.label ? otherName : '', ref.id].filter(Boolean).join(' · ');
+        return `<span class="reference">${ref.vanilla ? sprite(ref.vanilla, 32) : ''}<span class="reference-text"><span class="reference-name">${escapeHtml(ref.label)}</span>
+            ${secondary ? `<small>${escapeHtml(secondary)}</small>` : ''}</span></span>`;
+    };
 
-    function detailHtml(item, synergyQuery) {
+    function synergyRows(item) {
+        return Object.entries(item.synergies || {}).map(([key, textByLang]) => {
+            const prefix = (item.synergy_types && item.synergy_types[key]) === 'trinket' ? 'T' : 'C';
+            const ref = resolveReference(prefix, key);
+            const body = textByLang[lang()] || textByLang.en || '';
+            const names = ref.own ? ref.own.names : ref.vanilla && ref.vanilla.names;
+            const search = normalizeSearch([key, ref.id, ...Object.values(names || {}), ...Object.values(textByLang)].join('\n'));
+            return `<div class="syn" data-synergy-search="${escapeHtml(search)}"><div class="syn-name">${referenceHtml(ref)}</div><p>${escapeHtml(body)}</p></div>`;
+        }).join('');
+    }
+
+    function detailHtml(item) {
         const name = itemName(item);
         const otherName = lang() === 'kr' ? item.names && item.names.en : item.names && item.names.kr;
         const description = localized(item, 'descriptions');
@@ -229,7 +253,7 @@
             const viaAnswer = !origin.own && item.flag;
             upgradeHtml = `<section class="d-section"><h3>${escapeHtml(t(origin.own ? 'evolvesFrom' : 'upgrade'))}</h3>
                 <div class="path">${referenceHtml(origin)}<span class="arrow">→</span>${viaAnswer
-                    ? `<span class="badge flag ${escapeHtml(item.flag)}">${escapeHtml(t('answer', { flag: t(item.flag) }))}</span><span class="arrow">→</span>` : ''}<span class="node">${escapeHtml(name)}</span></div>
+                    ? `<span class="badge flag ${escapeHtml(item.flag)}">${escapeHtml(t('answer', { flag: t(item.flag) }))}</span><span class="arrow">→</span>` : ''}${itemLink(item)}</div>
                 ${viaAnswer ? `<p class="path-note">${escapeHtml(t('flagDesc_' + item.flag))}</p>` : ''}</section>`;
         }
         const childrenHtml = children.length
@@ -238,19 +262,9 @@
         const synergies = Object.entries(item.synergies || {});
         let synergyHtml = '';
         if (synergies.length) {
-            const query = (synergyQuery || '').trim().toLowerCase();
-            const rows = synergies.map(([key, textByLang]) => {
-                const prefix = (item.synergy_types && item.synergy_types[key]) === 'trinket' ? 'T' : 'C';
-                const ref = resolveReference(prefix, key);
-                const label = ref.own ? itemName(ref.own) : ref.label;
-                const body = textByLang[lang()] || textByLang.en || '';
-                return { ref, label, body };
-            }).filter(row => !query || `${row.label}\n${row.body}`.toLowerCase().includes(query));
-            synergyHtml = `<section class="d-section"><h3>${escapeHtml(t('synergies'))} · ${synergies.length}</h3>
-                ${synergies.length > 6 ? `<input type="search" class="syn-filter" data-synergy-filter value="${escapeHtml(synergyQuery || '')}" placeholder="${escapeHtml(t('synergyFilter'))}">` : ''}
-                <div class="syn-list">${rows.length ? rows.map(row => `<div class="syn"><div class="syn-name">${row.ref.own ? itemLink(row.ref.own)
-                    : `${escapeHtml(row.label)}${row.ref.id ? `<span class="muted">${escapeHtml(row.ref.id)}</span>` : ''}`}</div><p>${escapeHtml(row.body)}</p></div>`).join('')
-                    : `<p class="path-note">${escapeHtml(t('noSynergyMatch'))}</p>`}</div></section>`;
+            synergyHtml = `<section class="d-section d-synergies"><h3>${escapeHtml(t('synergies'))} · ${synergies.length}</h3>
+                ${synergies.length > 6 ? `<input type="search" class="syn-filter" data-synergy-filter autocomplete="off" spellcheck="false" aria-label="${escapeHtml(t('synergyFilter'))}" placeholder="${escapeHtml(t('synergyFilter'))}">` : ''}
+                <div class="syn-list">${synergyRows(item)}<p class="path-note" data-synergy-empty hidden>${escapeHtml(t('noSynergyMatch'))}</p></div></section>`;
         }
 
         const pools = (item.pools || []).map(pool => (typeof pool === 'string' ? pool : Object.keys(pool).find(k => k.startsWith('ROOM_')))).filter(Boolean);
@@ -265,24 +279,34 @@
 
         return `${head}
             ${description ? `<p class="d-quote">“${escapeHtml(description)}”</p>` : ''}
-            ${effectsHtml}${upgradeHtml}${childrenHtml}${synergyHtml}${factsHtml}
-            <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>`;
+            ${effectsHtml}${upgradeHtml}${childrenHtml}${factsHtml}
+            <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>${synergyHtml}`;
     }
 
     // Renders an item into the panel or the sheet body, keeping the synergy filter usable.
     function renderDetail(container, key, extraHtml) {
         const item = BY_KEY[key];
         if (!item) { container.innerHTML = ''; return; }
-        const draw = synergyQuery => {
-            container.innerHTML = detailHtml(item, synergyQuery) + (extraHtml || '');
-            const filter = container.querySelector('[data-synergy-filter]');
-            if (filter && synergyQuery !== undefined) {
-                filter.focus();
-                filter.setSelectionRange(filter.value.length, filter.value.length);
+        container.innerHTML = detailHtml(item) + (extraHtml || '');
+        const filter = container.querySelector('[data-synergy-filter]');
+        if (!filter) return;
+        const rows = Array.from(container.querySelectorAll('[data-synergy-search]'));
+        const empty = container.querySelector('[data-synergy-empty]');
+        let composing = false;
+        const applyFilter = () => {
+            const query = normalizeSearch(filter.value.trim());
+            let visible = 0;
+            for (const row of rows) {
+                row.hidden = !row.dataset.synergySearch.includes(query);
+                if (!row.hidden) visible += 1;
             }
-            if (filter) filter.addEventListener('input', () => draw(filter.value));
+            empty.hidden = visible > 0;
         };
-        draw();
+        filter.addEventListener('compositionstart', () => { composing = true; });
+        filter.addEventListener('compositionend', () => { composing = false; applyFilter(); });
+        filter.addEventListener('input', event => {
+            if (!composing && !event.isComposing) applyFilter();
+        });
     }
 
     function renderPanel() {

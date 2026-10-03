@@ -208,6 +208,12 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 .path .arrow { color: var(--faint); }
 .path .node { font-weight: 700; }
 .path .muted { color: var(--faint); font-weight: 500; font-size: 12px; margin-left: 2px; }
+.reference { display: inline-flex; align-items: center; gap: 9px; min-width: 0; max-width: 100%; }
+.reference .sprite { flex: none; width: 32px; height: 32px; }
+.reference .sprite-strip { object-fit: none; object-position: left top; }
+.reference-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.reference-name { font-weight: 700; line-height: 1.4; }
+.reference-text small { color: var(--faint); font-size: 11px; font-weight: 400; line-height: 1.4; }
 .path-note { margin-top: 6px; font-size: 12.5px; color: var(--faint); }
 .link {
     display: inline-flex; align-items: center; gap: 6px;
@@ -222,7 +228,10 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 .syn { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
 .syn-name { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13.5px; }
 .syn-name .muted { color: var(--faint); font-weight: 500; font-size: 12px; }
-.syn p { color: var(--muted); font-size: 13.5px; white-space: pre-line; }
+.syn p { color: var(--muted); font-size: 13.5px; white-space: pre-line; margin-top: 6px; }
+.syn[hidden] { display: none; }
+.d-synergies { border-top: 1px solid var(--line); padding-top: 18px; }
+.path .link { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
 .syn .link { font-size: 13px; }
 .syn .link img { width: 24px; height: 24px; }
 

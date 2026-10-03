@@ -1,0 +1,8 @@
+/source/
+/build/
+/items.js
+/itemmap.js
+/vanilla_items.js
+/resources/
+/.tmp/
+__pycache__/

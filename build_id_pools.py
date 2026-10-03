@@ -23,6 +23,7 @@ import json
 import re
 import sys
 import os
+from pathlib import Path
 from typing import List, Tuple
 
 try:
@@ -98,6 +99,13 @@ def ensure_dir(path: str) -> None:
 
 
 def build_pairs(kind: str) -> List[Tuple[int, str]]:
+    # Collectibles/trinkets have a committed vanilla catalog so site images,
+    # localized names and IDs cannot drift with an external documentation fetch.
+    catalog_path = Path(__file__).resolve().parent / "data/vanilla_items.json"
+    if kind in ("collectibles", "trinkets") and catalog_path.is_file():
+        prefix = "C:" if kind == "collectibles" else "T:"
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))["items"]
+        return sorted((entry["id"], entry["enum"]) for key, entry in catalog.items() if key.startswith(prefix))
     url = URLS[kind]
     prefix_map = {
         "collectibles": "COLLECTIBLE",
