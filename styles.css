@@ -132,9 +132,11 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
     transition: transform .12s ease, border-color .12s ease, background-color .12s ease, opacity .15s ease;
 }
 .tile img { width: var(--sprite); height: var(--sprite); }
-.tile::after {
-    content: ""; position: absolute; left: 22%; right: 22%; bottom: 6px; height: 3px; border-radius: 3px;
-    background: var(--flag, transparent);
+/* The Magic Conch answer is a small dot on the tile's corner, clear of the sprite. */
+.tile.has-flag::after {
+    content: ""; position: absolute; left: -3px; top: -3px; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--flag);
+    box-shadow: 0 0 0 2px var(--bg);
 }
 .tile:hover { transform: translateY(-2px); border-color: var(--line-strong); background: var(--surface-2); }
 .tile[aria-current="true"] { border-color: var(--accent); background: var(--surface-2); box-shadow: 0 0 0 1px var(--accent) inset; }
@@ -164,7 +166,6 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
     width: 88px; height: 88px; flex: none; border-radius: 14px;
     display: grid; place-items: center;
     background: var(--bg-2); border: 1px solid var(--line);
-    box-shadow: inset 0 -4px 0 var(--flag, transparent);
 }
 .d-icon img { width: 64px; height: 64px; }
 .d-title { min-width: 0; }

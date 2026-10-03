@@ -153,7 +153,7 @@
             if (!list.length) return '';
             const tiles = list.map(item => {
                 const label = itemName(item);
-                return `<button type="button" class="tile${isWip(item) ? ' wip' : ''}" data-key="${escapeHtml(item.key)}" style="--flag:${flagColor(item.flag)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${sprite(item, 64)}${isWip(item) ? '<span class="wip-mark">WIP</span>' : ''}</button>`;
+                return `<button type="button" class="tile${isWip(item) ? ' wip' : ''}${item.flag ? ' has-flag' : ''}" data-key="${escapeHtml(item.key)}" style="--flag:${flagColor(item.flag)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${sprite(item, 64)}${isWip(item) ? '<span class="wip-mark">WIP</span>' : ''}</button>`;
             }).join('');
             return `<section class="group" data-group="${group.id}"><h2 class="group-title">${escapeHtml(t(group.text))} <span>${list.length}</span></h2><div class="icons">${tiles}</div></section>`;
         }).join('');
