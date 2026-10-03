@@ -58,6 +58,14 @@ const fs = require('node:fs');
     await input.fill('');
     assert.ok(await page.locator('#detailPanel .syn:visible').count() > 50);
     console.log('PASS English aliases, no-match message and clearing the filter');
+    for (const query of ['플레이어 위치에 고정', 'fixed to player position', '향로   플레이어\n고정']) {
+        await input.fill(query);
+        const found = await page.locator('#detailPanel .syn:visible').allTextContents();
+        assert.ok(found.some(text => text.includes('Censer')), `description query failed: ${query}`);
+        if (query.startsWith('향로')) assert.equal(found.length, 1, 'mixed name/description should narrow to Censer');
+    }
+    await input.fill('');
+    console.log('PASS Korean/English synergy descriptions and combined name/description terms');
 
     // Check every known origin/synergy in the shipped generated mod registry.
     const coverage = await page.evaluate(() => {

@@ -2,6 +2,7 @@
 
 - This repository owns the Conch's Blessing codex UI and Pages workflow. Mod definitions and translations come from the checked-out `Ba-koD/conch_blessing` source through `generate_items_js.py`.
 - Preserve a focused search input across filtering. During IME composition, wait for composition completion and update only the result rows; never recreate the detail panel per keystroke.
+- Synergy filters search both English/Korean names and synergy descriptions. Normalize whitespace and match every query term across those fields, including mixed name/description queries.
 - Synergies are the last content section in item details, after effects, upgrade paths, facts, and link actions, on both desktop and mobile.
 - Show Magic Conch origin/answer/result mappings for mod origins as well as vanilla origins. Evolution routes and their localized conditions are separate, derived only from explicit evolution statements with own-item references in source locales; neither an origin mapping nor a downgrade establishes evolution.
 - Detail previews have a viewport-aware maximum height and internal scrolling, and shrink for short content on desktop and mobile. An explicitly pinned desktop item wins over hover/focus previews until unpinned or another item is selected; clicking its tile again unpins it.

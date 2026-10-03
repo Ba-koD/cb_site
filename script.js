@@ -60,7 +60,7 @@
     const VANILLA = window.VANILLA_ITEMS || {};
     const VANILLA_BY_ENUM = Object.fromEntries(Object.entries(VANILLA).map(([key, item]) =>
         [`${key.split(':')[0]}:${item.enum}`, item]));
-    const normalizeSearch = value => String(value || '').normalize('NFC').toLowerCase();
+    const normalizeSearch = value => String(value || '').normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
 
     // ---------- state ----------
     const state = { language: 'auto', detected: 'en', query: '', flag: 'all', pinned: null, preview: null, sheetKey: null };
@@ -307,10 +307,10 @@
         const empty = container.querySelector('[data-synergy-empty]');
         let composing = false;
         const applyFilter = () => {
-            const query = normalizeSearch(filter.value.trim());
+            const terms = normalizeSearch(filter.value).split(' ').filter(Boolean);
             let visible = 0;
             for (const row of rows) {
-                row.hidden = !row.dataset.synergySearch.includes(query);
+                row.hidden = !terms.every(term => row.dataset.synergySearch.includes(term));
                 if (!row.hidden) visible += 1;
             }
             empty.hidden = visible > 0;
