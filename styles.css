@@ -70,10 +70,19 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 }
 .button:hover { filter: brightness(1.06); }
 .button.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); font-weight: 500; }
-.language select {
+.language {
+    display: inline-flex; align-items: center; gap: 6px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 9px;
-    padding: 6px 8px; font-size: 13.5px; cursor: pointer;
+    padding: 0 2px 0 9px; color: var(--muted); font-size: 13px; cursor: pointer;
 }
+.language:focus-within { border-color: var(--line-strong); }
+.language-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.language select {
+    background: transparent; border: 0; color: var(--text);
+    padding: 6px 4px; font-size: 13.5px; cursor: pointer;
+}
+.language select:focus { outline: none; }
+.language select option { background: var(--surface); color: var(--text); }
 
 /* ---------- page layout ---------- */
 .page {
@@ -256,6 +265,7 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 }
 @media (max-width: 380px) {
     :root { --tile: 54px; --sprite: 40px; }
+    .language-label { display: none; }
     .topbar-actions .button { padding: 6px 9px; font-size: 12.5px; }
 }
 /* short landscape screens: keep the sticky tools out of the way */

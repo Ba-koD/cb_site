@@ -6,7 +6,7 @@ const texts = {
         subtitle: "Item Codex",
         workshop: "Steam Workshop",
         languageLabel: "Language",
-        autoDetect: "Auto",
+        autoDetect: "Auto ({lang})",
         introText: "When the Magic Conch answers, matching item pedestals in the room transform into the item for that answer.",
         required: "Requires",
 
@@ -59,7 +59,7 @@ const texts = {
         subtitle: "아이템 도감",
         workshop: "스팀 창작마당",
         languageLabel: "언어",
-        autoDetect: "자동",
+        autoDetect: "자동 ({lang})",
         introText: "마법의 소라고둥이 대답하면, 방 안의 해당 받침대 아이템이 그 대답에 맞는 아이템으로 바뀝니다.",
         required: "필수 모드",
 

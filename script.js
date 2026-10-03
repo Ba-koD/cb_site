@@ -6,6 +6,7 @@
 (() => {
     const SUPPORTED_LANGUAGES = ['kr', 'en'];
     const LANGUAGE_STORAGE_KEY = 'conch_blessing_language';
+    const LANGUAGE_NAMES = { kr: '한국어', en: 'English' };
     const WIDE = window.matchMedia('(min-width: 900px)');
     const HOVER = window.matchMedia('(hover: hover)');
     const FLAGS = ['positive', 'neutral', 'negative'];
@@ -136,6 +137,8 @@
         document.querySelectorAll('[data-placeholder]').forEach(el => { el.placeholder = t(el.dataset.placeholder); });
         document.getElementById('searchClear').setAttribute('aria-label', t('clearSearch'));
         document.getElementById('dialogClose').setAttribute('aria-label', t('close'));
+        // The auto option names the language it detected, so the control reads as a language setting.
+        document.getElementById('autoOption').textContent = t('autoDetect', { lang: LANGUAGE_NAMES[state.detected] || state.detected });
         document.getElementById('languageSelect').value = state.language;
     }
 
@@ -423,7 +426,17 @@
         if (state.sheetKey) renderDetail(document.getElementById('dialogBody'), state.sheetKey);
     }
 
+    // The top bar wraps to two rows on narrow screens; sticky offsets follow its real height.
+    function trackTopbarHeight() {
+        const topbar = document.querySelector('.topbar');
+        const apply = () => document.documentElement.style.setProperty('--topbar-h', `${Math.ceil(topbar.getBoundingClientRect().height)}px`);
+        apply();
+        if ('ResizeObserver' in window) new ResizeObserver(apply).observe(topbar);
+        else window.addEventListener('resize', apply);
+    }
+
     function init() {
+        trackTopbarHeight();
         const saved = readStoredLanguage();
         state.language = SUPPORTED_LANGUAGES.includes(saved) ? saved : 'auto';
         state.detected = detectAndSetLanguage();
