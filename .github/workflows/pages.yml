@@ -69,6 +69,16 @@ jobs:
           # 3) 생성 산출물
           cp -v source/items.js build/
           cp -v itemmap.js build/
+          # 4) 캐시 무효화: Pages는 CSS/JS를 몇 분간 캐시하므로, 배포마다 바뀌는
+          #    빌드 ID(사이트 커밋 + 모드 커밋)를 자산 주소에 붙여 새 페이지가
+          #    옛 파일과 섞이지 않게 한다.
+          BUILD_ID="$(git rev-parse --short HEAD)-$(git -C source rev-parse --short HEAD)"
+          sed -i "s/__BUILD__/${BUILD_ID}/g" build/index.html
+          if grep -q "__BUILD__" build/index.html; then
+            echo "::error::index.html still has a __BUILD__ placeholder"
+            exit 1
+          fi
+          echo "Build ID: ${BUILD_ID}"
           echo "Build tree:" && find build -maxdepth 3 -type f | sort
 
       - name: Configure Pages
