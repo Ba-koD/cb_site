@@ -97,6 +97,71 @@ const fs = require('node:fs');
     assert.equal(await page.locator('.tile[data-key="LIVE_EYE"]').evaluate(node => node.classList.contains('dim')), false);
     console.log('PASS upgrade source/result sprites and Korean vanilla origin search');
 
+    async function checkRoutes(language) {
+        await page.selectOption('#languageSelect', language);
+        const routes = await page.evaluate(() => {
+            const failures = [];
+            let count = 0;
+            for (const [sourceKey, source] of Object.entries(items)) {
+                for (const route of source.evolutions || []) {
+                    count++;
+                    const condition = route.conditions[window.ConchBlessing.getDisplayLanguage()] || route.conditions.en;
+                    window.ConchBlessing.select(route.target);
+                    const from = document.querySelector('#detailPanel .d-evolution-from');
+                    const upgrade = document.querySelector('#detailPanel .d-upgrade');
+                    if (!from?.textContent.includes(condition)) failures.push(`${route.target}: condition`);
+                    if (!upgrade?.querySelector('.badge.flag')) failures.push(`${route.target}: answer`);
+                    if (!upgrade?.querySelector(`[data-goto="${sourceKey}"]`)) failures.push(`${route.target}: source`);
+                    window.ConchBlessing.select(sourceKey);
+                    const into = document.querySelector('#detailPanel .d-evolution-into');
+                    const results = document.querySelector('#detailPanel .d-upgrade-results');
+                    if (!into?.textContent.includes(condition)) failures.push(`${sourceKey}: condition`);
+                    if (!results?.querySelector(`[data-goto="${route.target}"]`)) failures.push(`${sourceKey}: result`);
+                }
+            }
+            window.ConchBlessing.select('A_MINUS');
+            if (document.querySelector('#detailPanel .d-evolution-into')) failures.push('downgrade mistaken for evolution');
+            return { count, failures };
+        });
+        assert.equal(routes.count, 4, 'expected sword and Minus evolution routes');
+        assert.deepEqual(routes.failures, []);
+        console.log(`PASS ${language}: evolution conditions and Magic Conch routes at both ends`);
+    }
+    await checkRoutes('en');
+    await checkRoutes('kr');
+
+    await page.locator('#searchInput').fill('');
+    await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
+    await page.evaluate(() => { window.testPinnedInput = document.querySelector('#detailPanel [data-synergy-filter]'); });
+    await page.locator('.tile[data-key="LIVE_EYE"]').hover();
+    await page.locator('.tile[data-key="TYRFING"]').focus();
+    assert.equal(await page.locator('#detailPanel').getAttribute('data-key'), 'CHRONUS');
+    assert.equal(await page.evaluate(() => window.testPinnedInput === document.querySelector('#detailPanel [data-synergy-filter]')), true);
+    await page.locator('.tile[data-key="LIVE_EYE"]').click();
+    await page.locator('.tile[data-key="TYRFING"]').hover();
+    assert.equal(await page.locator('#detailPanel').getAttribute('data-key'), 'LIVE_EYE');
+    await page.locator('.tile[data-key="LIVE_EYE"]').click();
+    await page.locator('.tile[data-key="TYRFING"]').hover();
+    assert.equal(await page.locator('#detailPanel').getAttribute('data-key'), 'TYRFING');
+    console.log('PASS pin wins over hover/focus, another click changes pin, unpin restores previews');
+
+    async function dimensions(selector) {
+        return page.locator(selector).evaluate(node => ({ height: node.getBoundingClientRect().height,
+            client: node.clientHeight, scroll: node.scrollHeight, viewport: window.innerHeight }));
+    }
+    const shortKey = await page.evaluate(() => Object.entries(items).find(([, item]) => item.workingnowflag)[0]);
+    await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
+    const tallPanel = await dimensions('#detailPanel');
+    assert.ok(tallPanel.height <= 720 && tallPanel.height < tallPanel.viewport);
+    assert.ok(tallPanel.scroll > tallPanel.client);
+    await page.evaluate(key => window.ConchBlessing.select(key), shortKey);
+    assert.ok((await dimensions('#detailPanel')).height < tallPanel.height);
+    await page.setViewportSize({ width: 1280, height: 480 });
+    await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
+    assert.ok((await dimensions('#detailPanel')).height < 480);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    console.log('PASS desktop preview height cap, short-content shrink and short viewport');
+
     await page.locator('#searchInput').fill('');
     await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
     await page.locator('#detailPanel [data-synergy-filter]').fill('Monster Manual');
@@ -106,9 +171,15 @@ const fs = require('node:fs');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
     await checkComposition('#dialogBody');
+    const tallSheet = await dimensions('#detailDialog');
+    const sheetBody = await dimensions('#dialogBody');
+    assert.ok(tallSheet.height <= 720 && tallSheet.height < tallSheet.viewport);
+    assert.ok(sheetBody.scroll > sheetBody.client, 'sheet must scroll internally');
     await page.locator('#dialogBody [data-synergy-filter]').scrollIntoViewIfNeeded();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await page.screenshot({ path: '.tmp/mobile.png' });
+    await page.evaluate(key => window.ConchBlessing.select(key), shortKey);
+    assert.ok((await dimensions('#detailDialog')).height < tallSheet.height, 'short mobile details should shrink');
     assert.deepEqual(errors, [], 'browser runtime errors');
     console.log('PASS desktop/mobile layout and no browser errors');
     await browser.close();

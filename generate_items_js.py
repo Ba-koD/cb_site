@@ -21,6 +21,8 @@ ICON_TOKEN = re.compile(r'\{(?:c|t|card|own):[^{}]+\}\s*')
 # %TOKEN% lines show a live in-game value (e.g. %CHRONUS_BLOCK%), meaningless here.
 DYNAMIC_TOKEN = re.compile(r'%[A-Z_]+%')
 SYNERGY_LINE = re.compile(r'\[\s*\{([^{}]*)\}\s*\]\s*=\s*"([^"]+)"')
+OWN_REFERENCE = re.compile(r'\{own:([A-Z0-9_]+)\}')
+EVOLUTION_LINE = re.compile(r'\bevolves? into\b|진화', re.IGNORECASE)
 
 def find_matching_brace(content, start_pos):
     """detect the matching brace position"""
@@ -99,7 +101,7 @@ def apply_locale(items, tables):
     """Fill names/descriptions/eids/synergies from the locale tables."""
     for key, info in items.items():
         working_now = len(info) == 3 and 'names' in info and 'descriptions' in info and 'eids' in info
-        names, descriptions, eids, synergies, synergy_types = {}, {}, {}, {}, {}
+        names, descriptions, eids, synergies, synergy_types, evolutions = {}, {}, {}, {}, {}, {}
         for lang, table in tables.items():
             entry = (table.get('items') or {}).get(key)
             if not isinstance(entry, dict):
@@ -110,6 +112,15 @@ def apply_locale(items, tables):
                 descriptions[lang] = clean_locale_line(entry['description'])
             if entry.get('eid') is not None:
                 eids[lang] = locale_lines(entry['eid'])
+                # Only explicit evolution statements establish this route. An origin
+                # declaration is a Magic Conch mapping, not proof of evolution.
+                raw_lines = entry['eid'] if isinstance(entry['eid'], list) else [entry['eid']]
+                for line in raw_lines:
+                    if not isinstance(line, str) or not EVOLUTION_LINE.search(line):
+                        continue
+                    for target in OWN_REFERENCE.findall(line):
+                        if target in items and target != key:
+                            evolutions.setdefault(target, {})[lang] = clean_locale_line(line)
             lang_synergies = entry.get('synergies') or {}
             for site_key, target_type, line_key in info.get('synergy_lines', []):
                 text = '\n'.join(locale_lines(lang_synergies.get(line_key)))
@@ -125,6 +136,9 @@ def apply_locale(items, tables):
             info['descriptions'] = descriptions
         if eids:
             info['eids'] = eids
+        if evolutions:
+            info['evolutions'] = [{'target': target, 'conditions': conditions}
+                                  for target, conditions in evolutions.items()]
         if synergies:
             info['synergies'] = synergies
             info['synergy_types'] = synergy_types
@@ -854,6 +868,9 @@ const items = {
             if 'eids' in item_info:
                 js_content += f""",
         eids: {json.dumps(item_info['eids'], ensure_ascii=False)}"""
+
+            if 'evolutions' in item_info:
+                js_content += f",\n        evolutions: {json.dumps(item_info['evolutions'], ensure_ascii=False)}"
             
             # 시너지 정보 추가
             if 'synergies' in item_info:
@@ -920,4 +937,4 @@ def main():
     print("items.js file created!")
 
 if __name__ == "__main__":
-    main() 
+    main()

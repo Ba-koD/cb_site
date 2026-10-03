@@ -40,4 +40,11 @@ node tests/browser.cjs http://127.0.0.1:8766/
 
 The check exercises composition/input events without replacing the focused
 search node, caret retention, Korean/English matching, no-match/clear behavior,
-all generated synergy images, upgrade images and desktop/mobile section order.
+all generated synergy images, upgrade images, localized evolution conditions,
+pin/hover precedence, preview size/scrolling and desktop/mobile section order.
+
+Magic Conch routes use the source registry's origin and answer flag for both
+vanilla and mod origins. Separate evolution routes use the source locales'
+explicit evolution lines containing `{own:KEY}` references (English `evolves
+into` or Korean `진화`); their text remains the condition source of truth. An
+origin declaration alone and downgrade descriptions do not establish evolution.

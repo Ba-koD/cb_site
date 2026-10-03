@@ -23,6 +23,7 @@
        Never size the bar itself with it, or the measurement feeds back into itself. */
     --topbar-h: 56px;
     --panel-w: clamp(330px, 30vw, 440px);
+    --preview-max-h: 720px;
     --tile: 76px;
     --sprite: 64px;
     color-scheme: dark;
@@ -165,7 +166,7 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 .panel {
     display: none;
     position: sticky; top: calc(var(--topbar-h) + 16px);
-    max-height: calc(100dvh - var(--topbar-h) - 32px);
+    max-height: min(var(--preview-max-h), calc(100dvh - var(--topbar-h) - 64px));
     overflow: auto; overscroll-behavior: contain;
     background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
     padding: 18px;
@@ -245,7 +246,7 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 /* ---------- narrow-screen sheet ---------- */
 .sheet {
     width: min(560px, calc(100vw - 24px));
-    max-height: calc(100dvh - 24px);
+    max-height: min(var(--preview-max-h), calc(100dvh - 48px));
     margin: auto;
     background: var(--surface); color: var(--text);
     border: 1px solid var(--line); border-radius: 18px;
@@ -253,7 +254,7 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 }
 .sheet::backdrop { background: rgba(0, 0, 0, .6); backdrop-filter: blur(2px); }
 .sheet[open] { display: flex; flex-direction: column; animation: sheet-in .18s ease; }
-.sheet-body { overflow: auto; overscroll-behavior: contain; padding: 18px 18px 24px; }
+.sheet-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 18px 18px 24px; }
 .sheet-close {
     position: absolute; top: 10px; right: 10px; z-index: 1;
     width: 36px; height: 36px; border-radius: 10px;
@@ -263,9 +264,9 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 .sheet .d-head { padding-right: 40px; }
 @keyframes sheet-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
-/* phones: the sheet takes the whole screen */
+/* Keep a visible margin on phones; short details shrink to their content. */
 @media (max-width: 560px) {
-    .sheet { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; }
+    .sheet { width: calc(100vw - 24px); max-width: calc(100vw - 24px); }
     .sheet-body { padding-top: calc(16px + env(safe-area-inset-top)); padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 }
 

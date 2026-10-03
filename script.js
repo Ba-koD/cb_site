@@ -110,9 +110,14 @@
         return resolveReference(prefix, at > 0 ? item.origin.slice(at + 1) : item.origin);
     }
     const CHILDREN = {};
+    const EVOLUTION_SOURCES = {};
     for (const item of ITEMS) {
         const origin = originOf(item);
-        if (origin && origin.own) (CHILDREN[origin.own.key] = CHILDREN[origin.own.key] || []).push(item);
+        if (origin && origin.own && FLAGS.includes(item.flag)) (CHILDREN[origin.own.key] = CHILDREN[origin.own.key] || []).push(item);
+        for (const route of item.evolutions || []) {
+            if (BY_KEY[route.target]) (EVOLUTION_SOURCES[route.target] = EVOLUTION_SOURCES[route.target] || [])
+                .push({ source: item, conditions: route.conditions });
+        }
     }
 
     function matchesQuery(item) {
@@ -210,6 +215,12 @@
             ${secondary ? `<small>${escapeHtml(secondary)}</small>` : ''}</span></span>`;
     };
 
+    const upgradePath = (origin, target) => `<div class="path">${referenceHtml(origin)}<span class="arrow">→</span>
+        <span class="badge flag ${escapeHtml(target.flag)}">${escapeHtml(t('answer', { flag: t(target.flag) }))}</span>
+        <span class="arrow">→</span>${itemLink(target)}</div><p class="path-note">${escapeHtml(t('flagDesc_' + target.flag))}</p>`;
+    const evolutionPath = (source, target, conditions) => `<div class="path">${itemLink(source)}<span class="arrow">→</span>${itemLink(target)}</div>
+        <p class="path-note">${escapeHtml(t('evolutionCondition'))}: ${escapeHtml(conditions[lang()] || conditions.en || '')}</p>`;
+
     function synergyRows(item) {
         return Object.entries(item.synergies || {}).map(([key, textByLang]) => {
             const prefix = (item.synergy_types && item.synergy_types[key]) === 'trinket' ? 'T' : 'C';
@@ -249,15 +260,17 @@
         const origin = originOf(item);
         const children = CHILDREN[item.key] || [];
         let upgradeHtml = '';
-        if (origin) {
-            const viaAnswer = !origin.own && item.flag;
-            upgradeHtml = `<section class="d-section"><h3>${escapeHtml(t(origin.own ? 'evolvesFrom' : 'upgrade'))}</h3>
-                <div class="path">${referenceHtml(origin)}<span class="arrow">→</span>${viaAnswer
-                    ? `<span class="badge flag ${escapeHtml(item.flag)}">${escapeHtml(t('answer', { flag: t(item.flag) }))}</span><span class="arrow">→</span>` : ''}${itemLink(item)}</div>
-                ${viaAnswer ? `<p class="path-note">${escapeHtml(t('flagDesc_' + item.flag))}</p>` : ''}</section>`;
+        if (origin && FLAGS.includes(item.flag)) {
+            upgradeHtml = `<section class="d-section d-upgrade"><h3>${escapeHtml(t('upgrade'))}</h3>${upgradePath(origin, item)}</section>`;
         }
         const childrenHtml = children.length
-            ? `<section class="d-section"><h3>${escapeHtml(t('evolvesInto'))}</h3><div class="path">${children.map(itemLink).join('')}</div></section>` : '';
+            ? `<section class="d-section d-upgrade-results"><h3>${escapeHtml(t('upgradeResults'))}</h3>${children.map(child => upgradePath({ own: item }, child)).join('')}</section>` : '';
+        const evolutionSources = EVOLUTION_SOURCES[item.key] || [];
+        const evolutionTargets = (item.evolutions || []).filter(route => BY_KEY[route.target]);
+        const evolutionHtml = (evolutionSources.length
+            ? `<section class="d-section d-evolution-from"><h3>${escapeHtml(t('evolvesFrom'))}</h3>${evolutionSources.map(route => evolutionPath(route.source, item, route.conditions)).join('')}</section>` : '')
+            + (evolutionTargets.length
+                ? `<section class="d-section d-evolution-into"><h3>${escapeHtml(t('evolvesInto'))}</h3>${evolutionTargets.map(route => evolutionPath(item, BY_KEY[route.target], route.conditions)).join('')}</section>` : '');
 
         const synergies = Object.entries(item.synergies || {});
         let synergyHtml = '';
@@ -279,7 +292,7 @@
 
         return `${head}
             ${description ? `<p class="d-quote">“${escapeHtml(description)}”</p>` : ''}
-            ${effectsHtml}${upgradeHtml}${childrenHtml}${factsHtml}
+            ${effectsHtml}${upgradeHtml}${childrenHtml}${evolutionHtml}${factsHtml}
             <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>${synergyHtml}`;
     }
 
@@ -311,13 +324,13 @@
 
     function renderPanel() {
         if (!WIDE.matches) return;
-        const key = state.preview || state.pinned;
+        const key = state.pinned || state.preview || ITEMS.find(item => !isWip(item))?.key;
         const panel = document.getElementById('detailPanel');
         if (panel.dataset.key === key && !panel.dataset.stale) return;
         panel.dataset.key = key || '';
         delete panel.dataset.stale;
         renderDetail(panel, key, `<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>`);
-        if (!state.preview) panel.scrollTop = 0;
+        panel.scrollTop = 0;
     }
 
     // ---------- selection ----------
@@ -358,10 +371,17 @@
         const groups = document.getElementById('groups');
         groups.addEventListener('click', event => {
             const tile = event.target.closest('.tile');
-            if (tile) select(tile.dataset.key);
+            if (!tile) return;
+            if (WIDE.matches && state.pinned === tile.dataset.key) {
+                state.pinned = null;
+                state.preview = tile.dataset.key;
+                setHash(null);
+                renderPanel();
+                markCurrent();
+            } else select(tile.dataset.key);
         });
         groups.addEventListener('mouseover', event => {
-            if (!WIDE.matches || !HOVER.matches) return;
+            if (!WIDE.matches || !HOVER.matches || state.pinned) return;
             const tile = event.target.closest('.tile');
             if (tile && state.preview !== tile.dataset.key) {
                 state.preview = tile.dataset.key;
@@ -373,7 +393,7 @@
         });
         groups.addEventListener('focusin', event => {
             const tile = event.target.closest('.tile');
-            if (tile && WIDE.matches) { state.preview = tile.dataset.key; renderPanel(); }
+            if (tile && WIDE.matches && !state.pinned) { state.preview = tile.dataset.key; renderPanel(); }
         });
         groups.addEventListener('focusout', event => {
             if (!groups.contains(event.relatedTarget) && state.preview) { state.preview = null; renderPanel(); }
@@ -472,9 +492,6 @@
         const saved = readStoredLanguage();
         state.language = SUPPORTED_LANGUAGES.includes(saved) ? saved : 'auto';
         state.detected = detectAndSetLanguage();
-        const firstItem = ITEMS.find(item => !isWip(item));
-        state.pinned = firstItem ? firstItem.key : null;
-
         bindEvents();
         rerenderAll();
 
