@@ -1,824 +1,447 @@
-const SUPPORTED_LANGUAGES = ['kr', 'en'];
+// Conch's Blessing item codex.
+// Wide screens: hovering an icon previews it in the side panel and clicking pins it.
+// Narrow screens: tapping an icon opens the detail sheet. #ITEM_KEY links open an item.
+'use strict';
 
-let currentLanguage = 'auto';
-let detectedLanguage = 'en';
+(() => {
+    const SUPPORTED_LANGUAGES = ['kr', 'en'];
+    const LANGUAGE_STORAGE_KEY = 'conch_blessing_language';
+    const WIDE = window.matchMedia('(min-width: 900px)');
+    const HOVER = window.matchMedia('(hover: hover)');
+    const FLAGS = ['positive', 'neutral', 'negative'];
+    const FLAG_COLORS = { positive: 'var(--pos)', neutral: 'var(--neu)', negative: 'var(--neg)' };
 
-let allItems = {};
-let filteredItems = {};
-let registrationOrderIndex = null; // Registration order index map
-
-function ensureRegistrationOrderIndex() {
-    // Builds an index map that preserves the insertion order from items.js
-    if (!registrationOrderIndex && typeof items !== 'undefined') {
-        registrationOrderIndex = {};
-        Object.keys(items).forEach((key, idx) => {
-            registrationOrderIndex[key] = idx;
-        });
-        console.log('Registration order index built', {
-            total: Object.keys(registrationOrderIndex).length,
-            sample: Object.entries(registrationOrderIndex).slice(0, 5)
-        });
-    }
-}
-
-function detectBrowserLanguage() {
-    return detectAndSetLanguage();
-}
-
-function changeLanguage(lang) {
-    currentLanguage = lang;
-    if (lang === 'auto') {
-        // Re-detect: after a manual choice, detectedLanguage still holds that choice.
-        detectedLanguage = detectBrowserLanguage();
-    }
-
-    const languageSelect = document.getElementById('languageSelect');
-    if (languageSelect) {
-        languageSelect.value = lang;
-    }
-    
-    updatePageContent();
-    
-    localStorage.setItem('conch_blessing_language', lang);
-    
-    console.log('Language changed to:', lang);
-}
-
-function initializeLanguage() {
-    const savedLanguage = localStorage.getItem('conch_blessing_language');
-    if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
-        currentLanguage = savedLanguage;
-        detectedLanguage = savedLanguage;
-    } else {
-        detectedLanguage = detectBrowserLanguage();
-        currentLanguage = 'auto';
-    }
-    
-    const languageSelect = document.getElementById('languageSelect');
-    if (languageSelect) {
-        languageSelect.value = currentLanguage;
-    }
-    
-    console.log('Language initialized:', { currentLanguage, detectedLanguage });
-}
-
-function getDisplayLanguage() {
-    if (currentLanguage === 'auto') {
-        return detectedLanguage;
-    }
-    return currentLanguage;
-}
-
-function getLocalizedText(item, field, lang) {
-    if (item[field] && item[field][lang]) {
-        return item[field][lang];
-    }
-    return null;
-}
-
-function initializeSearchAndFilter() {
-    const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
-    const typeFilter = document.getElementById('typeFilter');
-    const flagFilter = document.getElementById('flagFilter');
-    const sortFilter = document.getElementById('sortFilter');
-    
-    if (searchInput) {
-        searchInput.addEventListener('input', performSearch);
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                performSearch();
-            }
-        });
-    }
-    
-    if (searchBtn) {
-        searchBtn.addEventListener('click', performSearch);
-    }
-    
-    if (typeFilter) {
-        typeFilter.addEventListener('change', performSearch);
-    }
-    
-    if (flagFilter) {
-        flagFilter.addEventListener('change', performSearch);
-    }
-    
-    if (sortFilter) {
-        sortFilter.addEventListener('change', performSearch);
-        // Set default sort to 'created' if available
-        if (sortFilter.querySelector('option[value="created"]')) {
-            sortFilter.value = 'created';
-            console.log('Default sort set to created');
-        }
-    }
-}
-
-function performSearch() {
-    const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
-    const typeFilter = document.getElementById('typeFilter')?.value || 'all';
-    const flagFilter = document.getElementById('flagFilter')?.value || 'all';
-    const sortBy = document.getElementById('sortFilter')?.value || 'created';
-    
-    console.log('Search performed:', { searchTerm, typeFilter, flagFilter, sortBy });
-    console.log('allItems count:', Object.keys(allItems).length);
-    
-    const container = document.getElementById('itemsContainer');
-    if (container) {
-        container.classList.add('searching');
-    }
-    
-    filteredItems = { ...allItems };
-    ensureRegistrationOrderIndex();
-    
-    if (searchTerm) {
-        console.log('Filtering by search term:', searchTerm);
-        const beforeCount = Object.keys(filteredItems).length;
-        
-        filteredItems = Object.fromEntries(
-            Object.entries(filteredItems).filter(([key, item]) => {
-                const currentLangName = getLocalizedText(item, 'names', getDisplayLanguage()) || '';
-                const englishName = getLocalizedText(item, 'names', 'en') || '';
-                
-                if (currentLangName.toLowerCase().includes(searchTerm)) {
-                    console.log(`Item ${key} matched by current language name: "${currentLangName}" contains "${searchTerm}"`);
-                    return true;
-                }
-                
-                if (englishName.toLowerCase().includes(searchTerm)) {
-                    console.log(`Item ${key} matched by English name: "${englishName}" contains "${searchTerm}"`);
-                    return true;
-                }
-                
-                if (item.origin) {
-                    const originLower = item.origin.toLowerCase().replace(/_/g, ' ');
-                    if (originLower.includes(searchTerm)) {
-                        console.log(`Item ${key} matched by origin: "${item.origin}" (${originLower}) contains "${searchTerm}"`);
-                        return true;
-                    }
-                }
-                
-                return false;
-            })
-        );
-        
-        console.log('Filtered results:', { beforeCount, afterCount: Object.keys(filteredItems).length });
-    } else {
-        filteredItems = { ...allItems };
-        console.log('No search term - showing all items');
-    }
-    
-                if (typeFilter !== 'all') {
-                    const sourceItems = Object.keys(filteredItems).length > 0 ? filteredItems : allItems;
-                    filteredItems = Object.fromEntries(
-                        Object.entries(sourceItems).filter(([key, item]) => {
-                            return item.type === typeFilter;
-                        })
-                    );
-                    console.log(`Type filtered by ${typeFilter}: ${Object.keys(filteredItems).length} items found`);
-                }
-    
-                if (flagFilter !== 'all') {
-                    const sourceItems = Object.keys(filteredItems).length > 0 ? filteredItems : allItems;
-                    filteredItems = Object.fromEntries(
-                        Object.entries(sourceItems).filter(([key, item]) => {
-                            return item.flag && item.flag.toLowerCase() === flagFilter.toLowerCase();
-                        })
-                    );
-                    console.log(`Flag filtered by ${flagFilter}: ${Object.keys(filteredItems).length} items found`);
-                }
-    
-    if (Object.keys(filteredItems).length > 0) {
-        console.log(`Sorting ${Object.keys(filteredItems).length} items by: ${sortBy}`);
-        
-        const sortedItems = Object.entries(filteredItems).sort(([keyA, itemA], [keyB, itemB]) => {
-            const isWorkingNowA = itemA.workingnowflag === true;
-            const isWorkingNowB = itemB.workingnowflag === true;
-            
-            if (isWorkingNowA && !isWorkingNowB) return 1;
-            if (!isWorkingNowA && isWorkingNowB) return -1;
-            if (isWorkingNowA && isWorkingNowB) return 0;
-            
-            switch (sortBy) {
-                case 'name':
-                    const nameA = getLocalizedText(itemA, 'names', getDisplayLanguage()) || '';
-                    const nameB = getLocalizedText(itemB, 'names', getDisplayLanguage()) || '';
-                    return nameA.localeCompare(nameB, getDisplayLanguage() === 'kr' ? 'ko' : 'en');
-                
-                case 'quality':
-                    const qualityA = itemA.quality || 0;
-                    const qualityB = itemB.quality || 0;
-                    console.log(`Comparing quality: ${keyA}(${qualityA}) vs ${keyB}(${qualityB})`);
-                    return qualityB - qualityA;
-                
-                case 'type':
-                    const typeA = itemA.type || 'passive';
-                    const typeB = itemB.type || 'passive';
-                    return typeA.localeCompare(typeB);
-                
-                case 'created':
-                    // Sort by registration order from items.js
-                    const indexA = (registrationOrderIndex && typeof registrationOrderIndex[keyA] !== 'undefined') ? registrationOrderIndex[keyA] : Number.MAX_SAFE_INTEGER;
-                    const indexB = (registrationOrderIndex && typeof registrationOrderIndex[keyB] !== 'undefined') ? registrationOrderIndex[keyB] : Number.MAX_SAFE_INTEGER;
-                    return indexA - indexB;
-                default:
-                    return 0;
-            }
-        });
-        
-        filteredItems = Object.fromEntries(sortedItems);
-        console.log(`Sorting completed. First few items:`, Object.keys(filteredItems).slice(0, 3));
-    } else {
-        console.log('No items to sort - filteredItems is empty');
-    }
-    
-    updateItemsDisplay();
-}
-
-function updatePageContent() {
-    const displayLang = getDisplayLanguage();
-    
-    updatePageTexts(displayLang);
-    
-    updateItemsDisplay();
-    
-    updateLanguageSelectorText();
-    
-    updateModalContent(displayLang);
-}
-
-function updatePageTexts(displayLang) {
-    const pageTitle = document.getElementById('pageTitle');
-    const pageSubtitle = document.getElementById('pageSubtitle');
-    if (pageTitle) pageTitle.innerHTML = getText('title', displayLang);
-    if (pageSubtitle) pageSubtitle.textContent = getText('subtitle', displayLang);
-    
-    const languageLabel = document.getElementById('languageLabel');
-    if (languageLabel) languageLabel.textContent = getText('languageLabel', displayLang);
-    
-    const introTitle = document.getElementById('introTitle');
-    const introText = document.getElementById('introText');
-    if (introTitle) introTitle.textContent = getText('introduction', displayLang);
-    if (introText) introText.textContent = getText('introText', displayLang);
-    
-    const itemsTitle = document.getElementById('itemsTitle');
-    if (itemsTitle) itemsTitle.textContent = getText('items', displayLang);
-    
-    const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
-    if (searchInput) searchInput.placeholder = getText('searchPlaceholder', displayLang);
-    if (searchBtn) searchBtn.textContent = getText('searchButton', displayLang);
-    
-    const typeLabel = document.getElementById('typeLabel');
-    const flagLabel = document.getElementById('flagLabel');
-    const sortLabel = document.getElementById('sortLabel');
-    if (typeLabel) typeLabel.textContent = getText('typeLabel', displayLang);
-    if (flagLabel) flagLabel.textContent = getText('flagLabel', displayLang);
-    if (sortLabel) sortLabel.textContent = getText('sortLabel', displayLang);
-    
-    const allTypes = document.getElementById('allTypes');
-    const passive = document.getElementById('passive');
-    const active = document.getElementById('active');
-    const trinket = document.getElementById('trinket');
-    const familiar = document.getElementById('familiar');
-    if (allTypes) allTypes.textContent = getText('allTypes', displayLang);
-    if (passive) passive.textContent = getText('passive', displayLang);
-    if (active) active.textContent = getText('active', displayLang);
-    if (trinket) trinket.textContent = getText('trinket', displayLang);
-    if (familiar) familiar.textContent = getText('familiar', displayLang);
-    
-    const allFlags = document.getElementById('allFlags');
-    const positive = document.getElementById('positive');
-    const neutral = document.getElementById('neutral');
-    const negative = document.getElementById('negative');
-    if (allFlags) allFlags.textContent = getText('allFlags', displayLang);
-    if (positive) positive.textContent = getText('positive', displayLang);
-    if (neutral) neutral.textContent = getText('neutral', displayLang);
-    if (negative) negative.textContent = getText('negative', displayLang);
-    
-    const byName = document.getElementById('byName');
-    const byQuality = document.getElementById('byQuality');
-    const byType = document.getElementById('byType');
-    if (byName) byName.textContent = getText('byName', displayLang);
-    if (byQuality) byQuality.textContent = getText('byQuality', displayLang);
-    if (byType) byType.textContent = getText('byType', displayLang);
-    
-    const featuresTitle = document.getElementById('featuresTitle');
-    const itemUpgradeTitle = document.getElementById('itemUpgradeTitle');
-    const itemUpgradeDesc = document.getElementById('itemUpgradeDesc');
-    const multiLanguageTitle = document.getElementById('multiLanguageTitle');
-    const multiLanguageDesc = document.getElementById('multiLanguageDesc');
-    const naturalSpawnTitle = document.getElementById('naturalSpawnTitle');
-    const naturalSpawnDesc = document.getElementById('naturalSpawnDesc');
-    
-    if (featuresTitle) featuresTitle.textContent = getText('keyFeatures', displayLang);
-    if (itemUpgradeTitle) itemUpgradeTitle.textContent = getText('itemUpgrade', displayLang);
-    if (itemUpgradeDesc) itemUpgradeDesc.textContent = getText('itemUpgradeDesc', displayLang);
-    if (multiLanguageTitle) multiLanguageTitle.textContent = getText('multiLanguage', displayLang);
-    if (multiLanguageDesc) multiLanguageDesc.textContent = getText('multiLanguageDesc', displayLang);
-    if (naturalSpawnTitle) naturalSpawnTitle.textContent = getText('naturalSpawn', displayLang);
-    if (naturalSpawnDesc) naturalSpawnDesc.textContent = getText('naturalSpawnDesc', displayLang);
-    
-    const copyright = document.getElementById('copyright');
-    const required = document.getElementById('required');
-    if (copyright) copyright.textContent = getText('copyright', displayLang);
-    if (required) required.innerHTML = getText('required', displayLang);
-}
-
-function updateLanguageSelectorText() {
-    const displayLang = getDisplayLanguage();
-    const languageSelect = document.getElementById('languageSelect');
-    if (languageSelect) {
-        Array.from(languageSelect.options).forEach(option => {
-            if (option.id === 'autoDetect') {
-                option.textContent = getText('autoDetect', displayLang);
-            } else if (option.id === 'korean') {
-                option.textContent = getText('korean', displayLang);
-            } else if (option.id === 'english') {
-                option.textContent = getText('english', displayLang);
-            }
-        });
-    }
-}
-
-function updateItemsDisplay() {
-    const container = document.getElementById('itemsContainer');
-    if (!container) return;
-    
-    const isSearching = container.classList.contains('searching');
-    
-    container.innerHTML = '';
-    
-    if (isSearching) {
-        container.classList.add('searching');
-    }
-    
-    if (typeof items !== 'undefined') {
-        if (Object.keys(allItems).length === 0) {
-            allItems = items;
-        }
-        ensureRegistrationOrderIndex();
-        
-        const searchTerm = document.getElementById('searchInput')?.value || '';
-        const typeFilter = document.getElementById('typeFilter')?.value || 'all';
-        const flagFilter = document.getElementById('flagFilter')?.value || 'all';
-        const sortBy = document.getElementById('sortFilter')?.value || 'created';
-        
-        const hasActiveFilters = searchTerm || typeFilter !== 'all' || flagFilter !== 'all';
-        const hasSorting = true;
-        
-        let itemsToDisplay;
-        if (hasActiveFilters || (hasSorting && Object.keys(filteredItems).length > 0)) {
-            itemsToDisplay = filteredItems;
-        } else {
-            itemsToDisplay = allItems;
-        }
-        console.log('Items to display:', { 
-            filteredCount: Object.keys(filteredItems).length, 
-            allCount: Object.keys(allItems).length,
-            displayCount: Object.keys(itemsToDisplay).length 
-        });
-        
-        const sortedItemsToDisplay = Object.entries(itemsToDisplay).sort(([keyA, itemA], [keyB, itemB]) => {
-            const isWorkingNowA = itemA.workingnowflag === true;
-            const isWorkingNowB = itemB.workingnowflag === true;
-            
-            if (isWorkingNowA && !isWorkingNowB) return 1;
-            if (!isWorkingNowA && isWorkingNowB) return -1;
-            if (isWorkingNowA && isWorkingNowB) return 0;
-            
-            if (sortBy === 'created') {
-                // Keep working items priority, then apply created order
-                const indexA = (registrationOrderIndex && typeof registrationOrderIndex[keyA] !== 'undefined') ? registrationOrderIndex[keyA] : Number.MAX_SAFE_INTEGER;
-                const indexB = (registrationOrderIndex && typeof registrationOrderIndex[keyB] !== 'undefined') ? registrationOrderIndex[keyB] : Number.MAX_SAFE_INTEGER;
-                return indexA - indexB;
-            }
-            return 0;
-        });
-        
-        sortedItemsToDisplay.forEach(([key, item]) => {
-            const itemCard = createItemCard(key, item);
-            
-            if (container.classList.contains('searching')) {
-                itemCard.style.animation = 'none';
-            }
-            
-            container.appendChild(itemCard);
-        });
-        
-        if (Object.keys(itemsToDisplay).length === 0) {
-            const noResultsMsg = document.createElement('div');
-            noResultsMsg.className = 'no-results';
-            noResultsMsg.innerHTML = `
-                <div class="no-results-content">
-                    <h3>${getText('noResults', getDisplayLanguage())}</h3>
-                    <p>${getText('noResultsDesc', getDisplayLanguage())}</p>
-                </div>
-            `;
-            container.appendChild(noResultsMsg);
-        }
-        
-        container.classList.remove('searching');
-    } else {
-        console.error('items.js not loaded or items variable not found');
-        container.innerHTML = '<p class="error-message">아이템 데이터를 불러올 수 없습니다.</p>';
-    }
-}
-
-function createItemCard(key, item) {
-    const displayLang = getDisplayLanguage();
-    const card = document.createElement('div');
-    card.className = 'item-card';
-    
-    const isWorkingNow = item.workingnowflag === true;
-    
-    const showQuality = !isWorkingNow && item.type !== 'trinket' && (typeof item.quality !== 'undefined');
-    const qualityStars = showQuality ? '⭐'.repeat(item.quality || 0) : '';
-    
-    const showPool = !isWorkingNow && item.type !== 'trinket';
-    const poolText = showPool ? formatPoolText(item.pools, displayLang) : '';
-    
-    const tagsText = !isWorkingNow ? (item.tags || 'offensive') : '';
-    
-    const itemName = getLocalizedText(item, 'names', displayLang) || 'Unknown';
-    const itemDescription = getLocalizedText(item, 'descriptions', displayLang) || '';
-    
-    let effects = [];
-    if (item.eids && item.eids[displayLang]) {
-        effects = item.eids[displayLang];
-    } else {
-        effects = [itemDescription || '효과 정보 없음'];
-    }
-    
-    card.innerHTML = `
-        <div class="item-header">
-            <div class="item-image-container">
-                <img src="${item.gfx || `resources/gfx/items/collectibles/${key.toLowerCase()}.png`}" 
-                     alt="${itemName}" 
-                     class="item-image" 
-                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="item-name-fallback" style="display:none;">
-                    <div class="fallback-icon">🎯</div>
-                    <div class="fallback-text">${itemName}</div>
-                </div>
-            </div>
-            <div class="item-info">
-                <h3>${itemName}</h3>
-                ${!isWorkingNow ? `<span class="item-type ${item.type || 'passive'}">${(item.type || 'passive').toUpperCase()}</span>` : ''}
-                ${showQuality ? `<div class="quality-stars">${qualityStars}</div>` : ''}
-            </div>
-        </div>
-        
-        <div class="item-description">${itemDescription}</div>
-        
-        <div class="item-effects">
-            <h4 data-kr="효과" data-en="Effects">효과</h4>
-            <ul class="effect-list">
-                ${effects.map(effect => `<li>${effect}</li>`).join('')}
-            </ul>
-        </div>
-        
-        ${!isWorkingNow ? `
-        <div class="item-stats">
-            <div class="stats-group">
-                ${showPool ? `<span class="stat-tag">Pool: ${poolText}</span>` : ''}
-                <span class="stat-tag">Tags: ${tagsText}</span>
-                ${item.shopprice ? `<span class="stat-tag">Shop: ${item.shopprice}$</span>` : ''}
-                ${item.devilprice ? `<span class="stat-tag">Devil: ${item.devilprice}♥</span>` : ''}
-                ${item.maxcharges ? `<span class="stat-tag">Charges: ${item.maxcharges}</span>` : ''}
-            </div>
-            <div class="stats-group">
-                ${item.origin ? `<span class="stat-tag origin">Origin: ${formatOriginNameWithId(item.origin)}</span>` : ''}
-                ${item.flag ? `<span class="stat-tag flag ${item.flag.toLowerCase()}">Flag: ${item.flag}</span>` : ''}
-            </div>
-        </div>
-        ` : ''}
-    `;
-    
-    card.addEventListener('click', () => {
-        showItemModal(key, item);
-    });
-    
-    card.style.cursor = 'pointer';
-    
-    return card;
-}
-
-function formatPoolText(pools, lang) {
-    if (!pools || pools.length === 0) {
-        return lang === 'kr' ? '알 수 없음' : 'Unknown';
-    }
-    
-    const poolMapping = {
-        'ROOM_DEFAULT': { kr: '기본방', en: 'Default Room' },
-        'ROOM_SHOP': { kr: '상점', en: 'Shop' },
-        'ROOM_ERROR': { kr: '에러방', en: 'Error Room' },
-        'ROOM_TREASURE': { kr: '보물방', en: 'Treasure Room' },
-        'ROOM_BOSS': { kr: '보스방', en: 'Boss Room' },
-        'ROOM_MINIBOSS': { kr: '미니보스방', en: 'Mini Boss Room' },
-        'ROOM_SECRET': { kr: '비밀방', en: 'Secret Room' },
-        'ROOM_SUPERSECRET': { kr: '1급 비밀방', en: 'Super Secret Room' },
-        'ROOM_ARCADE': { kr: '아케이드방', en: 'Arcade Room' },
-        'ROOM_CURSE': { kr: '저주방', en: 'Curse Room' },
-        'ROOM_CHALLENGE': { kr: '도전방', en: 'Challenge Room' },
-        'ROOM_LIBRARY': { kr: '책방', en: 'Library Room' },
-        'ROOM_SACRIFICE': { kr: '희생방', en: 'Sacrifice Room' },
-        'ROOM_DEVIL': { kr: '악마방', en: 'Devil Room' },
-        'ROOM_ANGEL': { kr: '천사방', en: 'Angel Room' },
-        'ROOM_DUNGEON': { kr: '사다리방', en: 'Crawl Space' },
-        'ROOM_BOSSRUSH': { kr: '보스 러쉬', en: 'Boss Rush' },
-        'ROOM_ISAACS': { kr: '침대방', en: 'Clean Bedroom' },
-        'ROOM_BARREN': { kr: '낡은침대방', en: 'Dirty Bedroom' },
-        'ROOM_CHEST': { kr: '상자방', en: 'Vault' },
-        'ROOM_DICE': { kr: '주사위방', en: 'Dice Room' },
-        'ROOM_BLACK_MARKET': { kr: '블랙마켓', en: 'Black Market' },
-        'ROOM_GREED_EXIT': { kr: '그리드 탈출방', en: 'Greed Exit Room' },
-        'ROOM_PLANETARIUM': { kr: '행성방', en: 'Planetarium' },
-        'ROOM_TELEPORTER': { kr: '텔레포터방', en: 'Teleporter Room' },
-        'ROOM_TELEPORTER_EXIT': { kr: '텔레포터 탈출방', en: 'Teleporter Exit Room' },
-        'ROOM_SECRET_EXIT': { kr: '비밀 탈출방', en: 'Secret Exit Room' },
-        'ROOM_BLUE': { kr: '블루 키방', en: 'Blue Key Room' },
-        'ROOM_ULTRASECRET': { kr: '레드비밀방', en: 'Ultra Secret Room' },
+    const POOL_NAMES = {
+        ROOM_DEFAULT: ['기본방', 'Default'], ROOM_SHOP: ['상점', 'Shop'], ROOM_ERROR: ['에러방', 'Error Room'],
+        ROOM_TREASURE: ['보물방', 'Treasure Room'], ROOM_BOSS: ['보스방', 'Boss Room'], ROOM_MINIBOSS: ['미니보스방', 'Mini-Boss Room'],
+        ROOM_SECRET: ['비밀방', 'Secret Room'], ROOM_SUPERSECRET: ['1급 비밀방', 'Super Secret Room'], ROOM_ARCADE: ['아케이드', 'Arcade'],
+        ROOM_CURSE: ['저주방', 'Curse Room'], ROOM_CHALLENGE: ['도전방', 'Challenge Room'], ROOM_LIBRARY: ['책방', 'Library'],
+        ROOM_SACRIFICE: ['희생방', 'Sacrifice Room'], ROOM_DEVIL: ['악마방', 'Devil Room'], ROOM_ANGEL: ['천사방', 'Angel Room'],
+        ROOM_DUNGEON: ['사다리방', 'Crawl Space'], ROOM_BOSSRUSH: ['보스 러시', 'Boss Rush'], ROOM_ISAACS: ['침대방', 'Bedroom'],
+        ROOM_BARREN: ['낡은 침대방', 'Barren Bedroom'], ROOM_CHEST: ['금고', 'Vault'], ROOM_DICE: ['주사위방', 'Dice Room'],
+        ROOM_BLACK_MARKET: ['블랙 마켓', 'Black Market'], ROOM_GREED_EXIT: ['그리드 탈출방', 'Greed Exit'], ROOM_PLANETARIUM: ['천체관', 'Planetarium'],
+        ROOM_TELEPORTER: ['텔레포터방', 'Teleporter Room'], ROOM_TELEPORTER_EXIT: ['텔레포터 출구', 'Teleporter Exit'],
+        ROOM_SECRET_EXIT: ['비밀 출구', 'Secret Exit'], ROOM_BLUE: ['블루 키방', 'Blue Room'], ROOM_ULTRASECRET: ['레드 비밀방', 'Ultra Secret Room']
     };
-    
-    return pools.map(pool => {
-        if (typeof pool === 'string') {
-            return poolMapping[pool] ? poolMapping[pool][lang] : pool;
-        } else if (typeof pool === 'object') {
-            const poolType = Object.keys(pool).find(key => key.startsWith('ROOM_'));
-            if (poolType) {
-                return poolMapping[poolType] ? poolMapping[poolType][lang] : poolType;
-            }
-        }
-        return pool;
-    }).join(', ');
-}
 
-function formatOriginName(origin) {
-    if (!origin) return '';
-    // Support prefixed origins: "C:BLACK_CANDLE" or "T:CANCER"; fallback to raw name
-    const parts = String(origin).split(":");
-    let prefix = null;
-    let raw = origin;
-    if (parts.length === 2) {
-        prefix = parts[0];
-        raw = parts[1];
+    // ---------- data ----------
+    const RAW = (typeof items !== 'undefined' && items) || {};
+    const ITEMS = Object.entries(RAW).map(([key, data]) => ({ key, ...data }));
+    const BY_KEY = Object.fromEntries(ITEMS.map(item => [item.key, item]));
+    const BY_ENGLISH_NAME = {};
+    for (const item of ITEMS) {
+        if (item.names && item.names.en) BY_ENGLISH_NAME[item.names.en.toLowerCase()] = item.key;
     }
-    const name = raw
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
-    return name;
-}
+    const isWip = item => item.workingnowflag === true;
+    const GROUPS = [
+        { id: 'collectibles', text: 'groupCollectibles', test: item => !isWip(item) && item.type !== 'familiar' && item.type !== 'trinket' },
+        { id: 'familiars', text: 'groupFamiliars', test: item => !isWip(item) && item.type === 'familiar' },
+        { id: 'trinkets', text: 'groupTrinkets', test: item => !isWip(item) && item.type === 'trinket' },
+        { id: 'wip', text: 'groupWip', test: isWip }
+    ];
 
-// Pools to resolve IDs for prefixed origins (loaded from itemmap.js)
-// You can provide these in two ways:
-// 1) Object form: { ENUM_NAME: ID }
-// 2) Array form (ID-first): [ [ID, 'ENUM_NAME'], [ID, 'ENUM_NAME'], ... ]
-
-function buildLookupMap(pool) {
-    if (Array.isArray(pool)) {
+    function buildLookup(pool) {
         const map = Object.create(null);
-        for (const entry of pool) {
-            if (Array.isArray(entry) && entry.length >= 2) {
-                const id = Number(entry[0]);
-                const name = String(entry[1]);
-                if (!Number.isNaN(id) && name) {
-                    map[name] = id;
-                }
+        if (Array.isArray(pool)) {
+            for (const entry of pool) {
+                if (Array.isArray(entry) && entry.length >= 2) map[String(entry[1])] = Number(entry[0]);
             }
+            return map;
         }
-        return map;
+        return pool || map;
     }
-    return pool || {};
-}
-
-const COLLECTIBLE_ID_LOOKUP = buildLookupMap(window.COLLECTIBLE_ID_POOL || []);
-const TRINKET_ID_LOOKUP = buildLookupMap(window.TRINKET_ID_POOL || []);
-const PILL_ID_LOOKUP = buildLookupMap(window.PILL_ID_POOL || []);
-const CARD_ID_LOOKUP = buildLookupMap(window.CARD_ID_POOL || []);
-
-function formatOriginNameWithId(origin) {
-    if (!origin) return '';
-    const parts = String(origin).split(":");
-    let prefix = null;
-    let raw = origin;
-    if (parts.length === 2) {
-        prefix = parts[0];
-        raw = parts[1];
-    }
-    const display = formatOriginName(raw);
-    if (!prefix) return display;
-    const key = String(raw);
-    if (prefix === 'T') {
-        const id = TRINKET_ID_LOOKUP[key];
-        return id ? `${display} (t${id})` : display;
-    }
-    if (prefix === 'P') {
-        const id = PILL_ID_LOOKUP[key];
-        return id ? `${display} (p${id})` : display;
-    }
-    if (prefix === 'K') {
-        const id = CARD_ID_LOOKUP[key];
-        return id ? `${display} (k${id})` : display;
-    }
-    // Default to collectible/familiar (C)
-    const id = COLLECTIBLE_ID_LOOKUP[key];
-    return id ? `${display} (c${id})` : display;
-}
-
-function getFlagDescription(flag, lang) {
-    const flagDescriptions = {
-        'positive': {
-            kr: '긍정적 플래그 - 마법의 소라고둥이 "긍정적인 대답"을 할 때 이 아이템을 얻을 수 있습니다',
-            en: 'Positive flag - You can get this item when the Magic Conch answers "Positive"'
-        },
-        'neutral': {
-            kr: '중립적 플래그 - 마법의 소라고둥이 "중립적인 대답"을 할 때 이 아이템을 얻을 수 있습니다',
-            en: 'Neutral flag - You can get this item when the Magic Conch answers "Neutral"'
-        },
-        'negative': {
-            kr: '부정적 플래그 - 마법의 소라고둥이 "부정적인 대답"을 할 때 이 아이템을 얻을 수 있습니다',
-            en: 'Negative flag - You can get this item when the Magic Conch answers "Negative"'
-        }
+    const ID_LOOKUP = {
+        C: buildLookup(window.COLLECTIBLE_ID_POOL),
+        T: buildLookup(window.TRINKET_ID_POOL),
+        K: buildLookup(window.CARD_ID_POOL),
+        P: buildLookup(window.PILL_ID_POOL)
     };
-    
-    return flagDescriptions[flag] ? flagDescriptions[flag][lang] : '';
-}
 
-function showItemModal(key, item) {
-    const displayLang = getDisplayLanguage();
-    const itemName = getLocalizedText(item, 'names', displayLang) || 'Unknown';
-    const itemDescription = getLocalizedText(item, 'descriptions', displayLang) || '';
-    
-    const isWorkingNow = item.workingnowflag === true;
-    const showQualityModal = !isWorkingNow && item.type !== 'trinket' && (typeof item.quality !== 'undefined');
-    const qualityStars = showQualityModal ? '⭐'.repeat(item.quality || 0) + '☆'.repeat(Math.max(0, 4 - (item.quality || 0))) : '';
-    
-    const showPoolModal = !isWorkingNow && item.type !== 'trinket';
-    const poolText = showPoolModal ? formatPoolText(item.pools, displayLang) : '';
-    
-    const tagsText = !isWorkingNow ? (item.tags || 'offensive') : '';
-    
-    let effects = [];
-    if (item.eids && item.eids[displayLang]) {
-        effects = item.eids[displayLang];
-    } else {
-        effects = [itemDescription || '효과 정보 없음'];
+    // ---------- state ----------
+    const state = { language: 'auto', detected: 'en', query: '', flag: 'all', pinned: null, preview: null, sheetKey: null };
+
+    const lang = () => (state.language === 'auto' ? state.detected : state.language);
+    const t = (key, vars) => getText(key, lang(), vars);
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const localized = (item, field) => (item[field] && (item[field][lang()] ?? item[field].en)) || '';
+    const itemName = item => localized(item, 'names') || item.key;
+    const effects = item => {
+        const lines = item.eids && (item.eids[lang()] || item.eids.en);
+        return Array.isArray(lines) ? lines : [];
+    };
+    const titleCase = raw => String(raw).toLowerCase().split(/[_\s]+/).filter(Boolean)
+        .map(word => word[0].toUpperCase() + word.slice(1)).join(' ');
+    const flagColor = flag => FLAG_COLORS[flag] || 'transparent';
+    // A missing sprite (work-in-progress items have none yet) becomes the name's first letter.
+    const sprite = (item, size) =>
+        `<img class="sprite" src="${escapeHtml(item.gfx || `resources/gfx/items/collectibles/${item.key.toLowerCase()}.png`)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" data-initial="${escapeHtml(Array.from(itemName(item))[0] || '?')}">`;
+    document.addEventListener('error', event => {
+        const img = event.target;
+        if (!(img instanceof HTMLImageElement) || !img.classList.contains('sprite')) return;
+        const fallback = document.createElement('span');
+        fallback.className = 'sprite-fallback';
+        fallback.setAttribute('aria-hidden', 'true');
+        fallback.textContent = img.dataset.initial || '?';
+        const size = img.getBoundingClientRect().width || Number(img.getAttribute('width')) || 32;
+        fallback.style.width = fallback.style.height = `${size}px`;
+        fallback.style.fontSize = `${Math.round(size * 0.5)}px`;
+        img.replaceWith(fallback);
+    }, true);
+
+    // A reference such as "C:DEAD_EYE" (origin) or a synergy key: this mod's item, or a vanilla one.
+    function resolveReference(prefix, raw) {
+        const ownKey = BY_ENGLISH_NAME[String(raw).toLowerCase()];
+        if (ownKey) return { own: BY_KEY[ownKey] };
+        const id = ID_LOOKUP[prefix] && ID_LOOKUP[prefix][raw];
+        return { label: titleCase(raw), id: id ? `${prefix === 'T' ? 't' : prefix === 'K' ? 'k' : prefix === 'P' ? 'p' : 'c'}${id}` : '' };
     }
-    
-    const modalHTML = `
-        <div class="modal" id="itemModal">
-            <div class="modal-content">
-                <span class="close" onclick="closeItemModal()">&times;</span>
-                <div class="modal-header">
-                    <div class="modal-image-container">
-                        <img src="${item.gfx || `resources/gfx/items/collectibles/${key.toLowerCase()}.png`}" 
-                             alt="${itemName}" 
-                             class="modal-image" 
-                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                        <div class="modal-fallback" style="display:none;">
-                            <div class="modal-fallback-icon">🎯</div>
-                            <div class="modal-fallback-text">${itemName}</div>
-                        </div>
-                    </div>
-                    <div class="modal-info">
-                        <h2>
-                            ${itemName}
-                            ${displayLang === 'kr' && item.names && item.names.en ? `<span class="english-name">(${item.names.en})</span>` : ''}
-                        </h2>
-                        ${!isWorkingNow ? `<span class="modal-type">${(item.type || 'passive').toUpperCase()}</span>` : ''}
-                        ${showQualityModal ? `<div class="modal-quality-stars">${qualityStars}</div>` : ''}
-                    </div>
-                </div>
-                
-                <div class="modal-description">${itemDescription}</div>
-                
-                <div class="modal-effects">
-                    <h3 data-kr="효과" data-en="Effects">효과</h3>
-                    <ul class="modal-effect-list">
-                        ${effects.map(effect => `<li>${effect}</li>`).join('')}
-                    </ul>
-                </div>
-                
-                ${item.flag ? `
-                <div class="modal-flag-info">
-                    <h3 data-kr="플래그 정보" data-en="Flag Information">플래그 정보</h3>
-                    <p class="flag-description">${getFlagDescription(item.flag, displayLang)}</p>
-                </div>
-                ` : ''}
-                
-                ${!isWorkingNow ? `
-                <div class="modal-stats">
-                    <div class="stats-group">
-                        ${showPoolModal ? `<span class="modal-stat-tag">Pool: ${poolText}</span>` : ''}
-                        <span class="modal-stat-tag">Tags: ${tagsText}</span>
-                        ${item.shopprice ? `<span class="modal-stat-tag">Shop: ${item.shopprice}$</span>` : ''}
-                        ${item.devilprice ? `<span class="modal-stat-tag">Devil: ${item.devilprice}♥</span>` : ''}
-                        ${item.maxcharges ? `<span class="modal-stat-tag">Charges: ${item.maxcharges}</span>` : ''}
-                    </div>
-                    <div class="stats-group">
-                        ${item.origin ? `<span class="modal-stat-tag origin">Origin: ${formatOriginNameWithId(item.origin)}</span>` : ''}
-                        ${item.flag ? `<span class="modal-stat-tag flag ${item.flag.toLowerCase()}">Flag: ${item.flag}</span>` : ''}
-                    </div>
-                </div>
-                ` : ''}
-                
-                ${item.synergies && Object.keys(item.synergies).length > 0 ? `
-                <div class="modal-synergies">
-                    <h3 data-kr="시너지" data-en="Synergies">시너지</h3>
-                    <div class="synergy-list">
-                        ${Object.entries(item.synergies).map(([synergyKey, synergyData]) => {
-                            const synergyName = formatOriginNameWithId(synergyKey);
-                            const synergyDesc = synergyData[displayLang] || synergyData['en'] || getText('synergyNoDesc', displayLang);
-                            const synergyType = (item.synergy_types && item.synergy_types[synergyKey]) || 'collectible';
-                            const synergyGfxBase = synergyType === 'trinket' ? 'trinkets' : 'collectibles';
-                            return `
-                                <div class="synergy-item">
-                                    <div class="synergy-header">
-                                        <img src="resources/gfx/items/${synergyGfxBase}/${synergyKey.toLowerCase()}.png" 
-                                             alt="${synergyName}" 
-                                             class="synergy-icon"
-                                             onerror="this.style.display='none';">
-                                        <span class="synergy-name">${synergyName}</span>
-                                    </div>
-                                    <div class="synergy-description">${synergyDesc}</div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-                ` : ''}
-            </div>
-        </div>
-    `;
-    
-    const existingModal = document.getElementById('itemModal');
-    if (existingModal) {
-        existingModal.remove();
+    function originOf(item) {
+        if (!item.origin) return null;
+        const at = item.origin.indexOf(':');
+        const prefix = at > 0 ? item.origin.slice(0, at) : 'C';
+        return resolveReference(prefix, at > 0 ? item.origin.slice(at + 1) : item.origin);
     }
-    
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    
-    const modal = document.getElementById('itemModal');
-    modal.style.display = 'block';
-    
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            closeItemModal();
-        }
-    });
-    
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeItemModal();
-        }
-    });
-    
-    updateModalContent(displayLang);
-}
-
-function closeItemModal() {
-    const modal = document.getElementById('itemModal');
-    if (modal) {
-        modal.remove();
+    const CHILDREN = {};
+    for (const item of ITEMS) {
+        const origin = originOf(item);
+        if (origin && origin.own) (CHILDREN[origin.own.key] = CHILDREN[origin.own.key] || []).push(item);
     }
-}
 
-function updateModalContent(lang) {
-    const modal = document.getElementById('itemModal');
-    if (!modal) return;
-    
-    modal.querySelectorAll('[data-kr][data-en]').forEach(element => {
-        element.textContent = element.getAttribute(`data-${lang}`);
-    });
-}
+    function matchesQuery(item) {
+        const query = state.query.trim().toLowerCase();
+        if (!query) return true;
+        const origin = originOf(item);
+        const haystack = [
+            item.key, item.names && item.names.en, item.names && item.names.kr, localized(item, 'descriptions'),
+            origin && (origin.own ? itemName(origin.own) : origin.label), ...effects(item)
+        ].join('\n').toLowerCase();
+        return haystack.includes(query);
+    }
+    const matchesFlag = item => state.flag === 'all' || item.flag === state.flag;
+    const isVisible = item => matchesQuery(item) && matchesFlag(item);
 
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Conch\'s Blessing 아이템 가이드가 로드되었습니다!');
-    
-    initializeLanguage();
-    
-    const languageSelect = document.getElementById('languageSelect');
-    if (languageSelect) {
-        languageSelect.addEventListener('change', function() {
-            const selectedLang = this.value;
-            changeLanguage(selectedLang);
+    // ---------- storage ----------
+    function readStoredLanguage() {
+        try { return localStorage.getItem(LANGUAGE_STORAGE_KEY); } catch (_) { return null; }
+    }
+    function storeLanguage(value) {
+        try { localStorage.setItem(LANGUAGE_STORAGE_KEY, value); } catch (_) { /* private mode */ }
+    }
+
+    // ---------- static texts ----------
+    function applyTexts() {
+        document.documentElement.lang = lang() === 'kr' ? 'ko' : 'en';
+        document.title = t('pageTitle');
+        document.querySelectorAll('[data-text]').forEach(el => { el.textContent = t(el.dataset.text); });
+        document.querySelectorAll('[data-placeholder]').forEach(el => { el.placeholder = t(el.dataset.placeholder); });
+        document.getElementById('searchClear').setAttribute('aria-label', t('clearSearch'));
+        document.getElementById('dialogClose').setAttribute('aria-label', t('close'));
+        document.getElementById('languageSelect').value = state.language;
+    }
+
+    // ---------- grid ----------
+    function renderFlags() {
+        const options = ['all', ...FLAGS];
+        document.getElementById('flagChips').innerHTML = options.map(flag =>
+            `<button type="button" class="chip" data-flag="${flag}" style="--flag:${flagColor(flag)}" aria-pressed="${state.flag === flag}">${escapeHtml(t(flag === 'all' ? 'allFlags' : flag))}</button>`
+        ).join('');
+    }
+
+    function renderGroups() {
+        const html = GROUPS.map(group => {
+            const list = ITEMS.filter(group.test);
+            if (!list.length) return '';
+            const tiles = list.map(item => {
+                const label = itemName(item);
+                return `<button type="button" class="tile${isWip(item) ? ' wip' : ''}" data-key="${escapeHtml(item.key)}" style="--flag:${flagColor(item.flag)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${sprite(item, 64)}${isWip(item) ? '<span class="wip-mark">WIP</span>' : ''}</button>`;
+            }).join('');
+            return `<section class="group" data-group="${group.id}"><h2 class="group-title">${escapeHtml(t(group.text))} <span>${list.length}</span></h2><div class="icons">${tiles}</div></section>`;
+        }).join('');
+        document.getElementById('groups').innerHTML = html;
+        updateFilters();
+        markCurrent();
+    }
+
+    // Filters dim tiles in place so the codex layout never jumps around.
+    function updateFilters() {
+        let visible = 0;
+        const counted = ITEMS.filter(item => !isWip(item));
+        document.querySelectorAll('.tile').forEach(tile => {
+            const item = BY_KEY[tile.dataset.key];
+            const show = isVisible(item);
+            tile.classList.toggle('dim', !show);
+            if (show && !isWip(item)) visible += 1;
+        });
+        const filtering = state.query.trim() || state.flag !== 'all';
+        document.getElementById('resultCount').textContent = filtering
+            ? t('matchCount', { n: visible, total: counted.length })
+            : t('itemCount', { n: counted.length });
+        document.getElementById('emptyState').hidden = !(filtering && visible === 0);
+        document.getElementById('searchClear').hidden = !state.query;
+    }
+
+    function markCurrent() {
+        const current = WIDE.matches ? state.pinned : state.sheetKey;
+        document.querySelectorAll('.tile').forEach(tile => {
+            tile.setAttribute('aria-current', tile.dataset.key === current ? 'true' : 'false');
         });
     }
-    
-    initializeSearchAndFilter();
-    
-    updatePageContent();
-    
-    console.log('총 아이템 수:', typeof items !== 'undefined' ? Object.keys(items).length : 'N/A');
-    console.log('현재 언어:', currentLanguage);
-    console.log('감지된 언어:', detectedLanguage);
-    console.log('표시 언어:', getDisplayLanguage());
-});
 
-window.ConchBlessing = {
-    changeLanguage: changeLanguage,
-    getCurrentLanguage: () => currentLanguage,
-    getDisplayLanguage: getDisplayLanguage
-}; 
+    // ---------- detail ----------
+    const stars = quality => (typeof quality === 'number'
+        ? `<span class="stars" aria-label="Quality ${quality}">${'★'.repeat(quality)}<i>${'★'.repeat(Math.max(0, 4 - quality))}</i></span>` : '');
+    const itemLink = item => `<button type="button" class="link" data-goto="${escapeHtml(item.key)}">${sprite(item, 28)}${escapeHtml(itemName(item))}</button>`;
+    const referenceHtml = ref => (ref.own ? itemLink(ref.own)
+        : `<span class="node">${escapeHtml(ref.label)}</span>${ref.id ? `<span class="muted">${escapeHtml(ref.id)}</span>` : ''}`);
+
+    function detailHtml(item, synergyQuery) {
+        const name = itemName(item);
+        const otherName = lang() === 'kr' ? item.names && item.names.en : item.names && item.names.kr;
+        const description = localized(item, 'descriptions');
+        const head = `
+            <header class="d-head">
+                <div class="d-icon" style="--flag:${flagColor(item.flag)}">${sprite(item, 64)}</div>
+                <div class="d-title">
+                    <h2>${escapeHtml(name)}</h2>
+                    ${otherName && otherName !== name ? `<p class="d-sub">${escapeHtml(otherName)}</p>` : ''}
+                    <div class="badges">
+                        ${isWip(item) ? `<span class="badge">${escapeHtml(t('wip'))}</span>` : `<span class="badge">${escapeHtml(t(item.type || 'passive'))}</span>`}
+                        ${item.flag ? `<span class="badge flag ${escapeHtml(item.flag)}" title="${escapeHtml(t('flagDesc_' + item.flag))}">${escapeHtml(t(item.flag))}</span>` : ''}
+                        ${!isWip(item) && item.type !== 'trinket' ? stars(item.quality) : ''}
+                    </div>
+                </div>
+            </header>`;
+        if (isWip(item)) {
+            return `${head}<p class="d-quote">${escapeHtml(t('wipText'))}</p>`;
+        }
+
+        const lines = effects(item);
+        const effectsHtml = lines.length
+            ? `<section class="d-section"><h3>${escapeHtml(t('effects'))}</h3><ul class="d-effects">${lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></section>` : '';
+
+        const origin = originOf(item);
+        const children = CHILDREN[item.key] || [];
+        let upgradeHtml = '';
+        if (origin) {
+            const viaAnswer = !origin.own && item.flag;
+            upgradeHtml = `<section class="d-section"><h3>${escapeHtml(t(origin.own ? 'evolvesFrom' : 'upgrade'))}</h3>
+                <div class="path">${referenceHtml(origin)}<span class="arrow">→</span>${viaAnswer
+                    ? `<span class="badge flag ${escapeHtml(item.flag)}">${escapeHtml(t('answer', { flag: t(item.flag) }))}</span><span class="arrow">→</span>` : ''}<span class="node">${escapeHtml(name)}</span></div>
+                ${viaAnswer ? `<p class="path-note">${escapeHtml(t('flagDesc_' + item.flag))}</p>` : ''}</section>`;
+        }
+        const childrenHtml = children.length
+            ? `<section class="d-section"><h3>${escapeHtml(t('evolvesInto'))}</h3><div class="path">${children.map(itemLink).join('')}</div></section>` : '';
+
+        const synergies = Object.entries(item.synergies || {});
+        let synergyHtml = '';
+        if (synergies.length) {
+            const query = (synergyQuery || '').trim().toLowerCase();
+            const rows = synergies.map(([key, textByLang]) => {
+                const prefix = (item.synergy_types && item.synergy_types[key]) === 'trinket' ? 'T' : 'C';
+                const ref = resolveReference(prefix, key);
+                const label = ref.own ? itemName(ref.own) : ref.label;
+                const body = textByLang[lang()] || textByLang.en || '';
+                return { ref, label, body };
+            }).filter(row => !query || `${row.label}\n${row.body}`.toLowerCase().includes(query));
+            synergyHtml = `<section class="d-section"><h3>${escapeHtml(t('synergies'))} · ${synergies.length}</h3>
+                ${synergies.length > 6 ? `<input type="search" class="syn-filter" data-synergy-filter value="${escapeHtml(synergyQuery || '')}" placeholder="${escapeHtml(t('synergyFilter'))}">` : ''}
+                <div class="syn-list">${rows.length ? rows.map(row => `<div class="syn"><div class="syn-name">${row.ref.own ? itemLink(row.ref.own)
+                    : `${escapeHtml(row.label)}${row.ref.id ? `<span class="muted">${escapeHtml(row.ref.id)}</span>` : ''}`}</div><p>${escapeHtml(row.body)}</p></div>`).join('')
+                    : `<p class="path-note">${escapeHtml(t('noSynergyMatch'))}</p>`}</div></section>`;
+        }
+
+        const pools = (item.pools || []).map(pool => (typeof pool === 'string' ? pool : Object.keys(pool).find(k => k.startsWith('ROOM_')))).filter(Boolean);
+        const facts = [];
+        if (pools.length) facts.push([t('pools'), `<div class="mini-chips">${pools.map(pool => `<span class="mini-chip">${escapeHtml((POOL_NAMES[pool] || [titleCase(pool.replace(/^ROOM_/, ''))])[lang() === 'kr' ? 0 : 1] || titleCase(pool.replace(/^ROOM_/, '')))}</span>`).join('')}</div>`]);
+        if (item.tags) facts.push([t('tags'), `<div class="mini-chips">${item.tags.split(/\s+/).filter(Boolean).map(tag => `<span class="mini-chip">${escapeHtml(tag)}</span>`).join('')}</div>`]);
+        if (item.shopprice) facts.push([t('shopPrice'), `${item.shopprice}¢`]);
+        if (item.devilprice) facts.push([t('devilPrice'), '♥'.repeat(Math.max(1, item.devilprice))]);
+        if (item.maxcharges) facts.push([t('charges'), String(item.maxcharges)]);
+        const factsHtml = facts.length
+            ? `<section class="d-section"><h3>${escapeHtml(t('details'))}</h3><dl class="facts">${facts.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${value}</dd>`).join('')}</dl></section>` : '';
+
+        return `${head}
+            ${description ? `<p class="d-quote">“${escapeHtml(description)}”</p>` : ''}
+            ${effectsHtml}${upgradeHtml}${childrenHtml}${synergyHtml}${factsHtml}
+            <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>`;
+    }
+
+    // Renders an item into the panel or the sheet body, keeping the synergy filter usable.
+    function renderDetail(container, key, extraHtml) {
+        const item = BY_KEY[key];
+        if (!item) { container.innerHTML = ''; return; }
+        const draw = synergyQuery => {
+            container.innerHTML = detailHtml(item, synergyQuery) + (extraHtml || '');
+            const filter = container.querySelector('[data-synergy-filter]');
+            if (filter && synergyQuery !== undefined) {
+                filter.focus();
+                filter.setSelectionRange(filter.value.length, filter.value.length);
+            }
+            if (filter) filter.addEventListener('input', () => draw(filter.value));
+        };
+        draw();
+    }
+
+    function renderPanel() {
+        if (!WIDE.matches) return;
+        const key = state.preview || state.pinned;
+        const panel = document.getElementById('detailPanel');
+        if (panel.dataset.key === key && !panel.dataset.stale) return;
+        panel.dataset.key = key || '';
+        delete panel.dataset.stale;
+        renderDetail(panel, key, `<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>`);
+        if (!state.preview) panel.scrollTop = 0;
+    }
+
+    // ---------- selection ----------
+    function setHash(key) {
+        const url = key ? `#${encodeURIComponent(key)}` : `${location.pathname}${location.search}`;
+        history.replaceState(null, '', url);
+    }
+
+    function openSheet(key) {
+        const dialog = document.getElementById('detailDialog');
+        state.sheetKey = key;
+        renderDetail(document.getElementById('dialogBody'), key);
+        document.getElementById('dialogBody').scrollTop = 0;
+        if (!dialog.open) dialog.showModal();
+        markCurrent();
+    }
+
+    function closeSheet() {
+        const dialog = document.getElementById('detailDialog');
+        if (dialog.open) dialog.close();
+    }
+
+    function select(key) {
+        if (!BY_KEY[key]) return;
+        setHash(key);
+        if (WIDE.matches) {
+            state.pinned = key;
+            state.preview = null;
+            renderPanel();
+            markCurrent();
+        } else {
+            openSheet(key);
+        }
+    }
+
+    // ---------- events ----------
+    function bindEvents() {
+        const groups = document.getElementById('groups');
+        groups.addEventListener('click', event => {
+            const tile = event.target.closest('.tile');
+            if (tile) select(tile.dataset.key);
+        });
+        groups.addEventListener('mouseover', event => {
+            if (!WIDE.matches || !HOVER.matches) return;
+            const tile = event.target.closest('.tile');
+            if (tile && state.preview !== tile.dataset.key) {
+                state.preview = tile.dataset.key;
+                renderPanel();
+            }
+        });
+        groups.addEventListener('mouseleave', () => {
+            if (state.preview) { state.preview = null; renderPanel(); }
+        });
+        groups.addEventListener('focusin', event => {
+            const tile = event.target.closest('.tile');
+            if (tile && WIDE.matches) { state.preview = tile.dataset.key; renderPanel(); }
+        });
+        groups.addEventListener('focusout', event => {
+            if (!groups.contains(event.relatedTarget) && state.preview) { state.preview = null; renderPanel(); }
+        });
+
+        // Links inside a detail (origin, evolutions, synergy items) and the copy-link button.
+        document.addEventListener('click', event => {
+            const goto = event.target.closest('[data-goto]');
+            if (goto) { select(goto.dataset.goto); return; }
+            const copy = event.target.closest('[data-copy-link]');
+            if (copy) {
+                const url = `${location.origin}${location.pathname}#${encodeURIComponent(copy.dataset.copyLink)}`;
+                const done = () => { copy.textContent = t('linkCopied'); setTimeout(() => { copy.textContent = t('copyLink'); }, 1600); };
+                if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, () => window.prompt(t('copyLink'), url));
+                else window.prompt(t('copyLink'), url);
+            }
+        });
+
+        const dialog = document.getElementById('detailDialog');
+        document.getElementById('dialogClose').addEventListener('click', closeSheet);
+        dialog.addEventListener('click', event => { if (event.target === dialog) closeSheet(); });
+        dialog.addEventListener('close', () => {
+            // The close event is queued; another item may already have reopened the sheet.
+            if (dialog.open) return;
+            state.sheetKey = null;
+            if (!WIDE.matches) setHash(null);
+            markCurrent();
+        });
+
+        const search = document.getElementById('searchInput');
+        search.addEventListener('input', () => { state.query = search.value; updateFilters(); });
+        document.getElementById('searchClear').addEventListener('click', () => {
+            search.value = ''; state.query = ''; updateFilters(); search.focus();
+        });
+        document.getElementById('flagChips').addEventListener('click', event => {
+            const chip = event.target.closest('[data-flag]');
+            if (!chip) return;
+            state.flag = chip.dataset.flag;
+            renderFlags();
+            updateFilters();
+        });
+
+        document.getElementById('languageSelect').addEventListener('change', event => {
+            state.language = event.target.value;
+            if (state.language === 'auto') state.detected = detectAndSetLanguage();
+            storeLanguage(state.language);
+            rerenderAll();
+        });
+
+        // Crossing the breakpoint moves the current item between the sheet and the panel.
+        WIDE.addEventListener('change', () => {
+            if (WIDE.matches) {
+                if (state.sheetKey) state.pinned = state.sheetKey;
+                closeSheet();
+                document.getElementById('detailPanel').dataset.stale = '1';
+                renderPanel();
+            }
+            markCurrent();
+        });
+
+        window.addEventListener('hashchange', () => {
+            const key = decodeURIComponent(location.hash.slice(1));
+            if (BY_KEY[key]) select(key);
+        });
+    }
+
+    function rerenderAll() {
+        applyTexts();
+        renderFlags();
+        renderGroups();
+        const panel = document.getElementById('detailPanel');
+        panel.dataset.stale = '1';
+        renderPanel();
+        if (state.sheetKey) renderDetail(document.getElementById('dialogBody'), state.sheetKey);
+    }
+
+    function init() {
+        const saved = readStoredLanguage();
+        state.language = SUPPORTED_LANGUAGES.includes(saved) ? saved : 'auto';
+        state.detected = detectAndSetLanguage();
+        const firstItem = ITEMS.find(item => !isWip(item));
+        state.pinned = firstItem ? firstItem.key : null;
+
+        bindEvents();
+        rerenderAll();
+
+        const hashKey = decodeURIComponent(location.hash.slice(1));
+        if (BY_KEY[hashKey]) select(hashKey);
+    }
+
+    window.ConchBlessing = {
+        getDisplayLanguage: lang,
+        select
+    };
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+})();

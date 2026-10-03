@@ -1,141 +1,113 @@
-// Conch's Blessing Language Texts
-// Auto-generated language support
+// Conch's Blessing site texts (UI only; item text comes from items.js).
 
 const texts = {
     en: {
-        // Page titles and headers
-        title: "🐚 <a href=\"https://steamcommunity.com/sharedfiles/filedetails/?id=3545334858\" target=\"_blank\">Conch's Blessing</a>",
-        subtitle: "Conch's Blessing - Item Guide",
-        introduction: "Introduction",
-        items: "Items",
-        keyFeatures: "Key Features",
-        
-        // Language selector
-        languageLabel: "Language:",
-        autoDetect: "Auto Detect",
-        korean: "Korean",
-        english: "English",
-        
-        // Introduction text
-        introText: "Conch's Blessing is a mod that adds a 'Conch's Blessing' upgrade system to The Binding of Isaac: Repentance. It transforms existing items with polished visuals and allows fine customization of language, spawn, and timing.",
-        
-        // Search and filter
-        searchPlaceholder: "Search by item name, Origin...",
-        searchButton: "Search",
-        typeLabel: "Type:",
-        allTypes: "All Types",
-        passive: "Passive",
-        active: "Active",
-        trinket: "Trinket",
-        familiar: "Familiar",
-        flagLabel: "Flag:",
-        allFlags: "All Flags",
+        pageTitle: "Conch's Blessing - Item Codex",
+        subtitle: "Item Codex",
+        workshop: "Steam Workshop",
+        languageLabel: "Language",
+        autoDetect: "Auto",
+        introText: "When the Magic Conch answers, matching item pedestals in the room transform into the item for that answer.",
+        required: "Requires",
+
+        searchPlaceholder: "Search names, effects, or origin items",
+        clearSearch: "Clear search",
+        allFlags: "All",
         positive: "Positive",
         neutral: "Neutral",
         negative: "Negative",
-        sortLabel: "Sort:",
-        byCreated: "By Registration",
-        byName: "By Name",
-        byQuality: "By Quality",
-        byType: "By Type",
-        
-        // Features
-        itemUpgrade: "Item Upgrade Sequence",
-        itemUpgradeDesc: "Upgrade system that naturally connects Before → Morph → After",
-        multiLanguage: "Multi-language Support",
-        multiLanguageDesc: "HUD/EID popups in Korean/English",
-        naturalSpawn: "Natural Spawn Toggle",
-        naturalSpawnDesc: "Enable/disable mod item spawns via MCM",
-        
-        // Footer
-        copyright: "© 2025 Conch's Blessing Mod",
-        required: "Required: <a href=\"https://steamcommunity.com/sharedfiles/filedetails/?id=3540206030\" target=\"_blank\">Magic Conch</a>",
-        
-        // Modal and UI
-        noResults: "No results found",
-        noResultsDesc: "Try different search terms or filters",
-        workingInProgress: "Work in progress item",
-        
-        // Item properties
-        pool: "Pool",
-        tags: "Tags",
-        origin: "Origin",
-        flag: "Flag",
-        flagDesc: "Magic Conch's answer (Positive, Neutral, Negative)",
-        
-        // Synergies
+        passive: "Passive",
+        active: "Active",
+        familiar: "Familiar",
+        trinket: "Trinket",
+        groupCollectibles: "Collectibles",
+        groupFamiliars: "Familiars",
+        groupTrinkets: "Trinkets",
+        groupWip: "Work in progress",
+        itemCount: "{n} items",
+        matchCount: "{n} of {total} match",
+        noMatch: "No items match. Try another search.",
+        hintWide: "Hover an icon to preview it, click to pin it.",
+
+        wip: "Work in progress",
+        wipText: "This item is still being made.",
+        effects: "Effects",
+        upgrade: "Magic Conch upgrade",
+        answer: "{flag} answer",
+        evolvesFrom: "Evolves from",
+        evolvesInto: "Evolves into",
         synergies: "Synergies",
-        synergyNoDesc: "No synergy description"
+        synergyFilter: "Filter synergies",
+        noSynergyMatch: "No synergies match.",
+        details: "Details",
+        pools: "Item pools",
+        tags: "Tags",
+        shopPrice: "Shop price",
+        devilPrice: "Devil deal",
+        charges: "Charges",
+        close: "Close",
+        copyLink: "Copy link",
+        linkCopied: "Link copied",
+        flagDesc_positive: "Appears when the Magic Conch gives a positive answer.",
+        flagDesc_neutral: "Appears when the Magic Conch gives a neutral answer.",
+        flagDesc_negative: "Appears when the Magic Conch gives a negative answer.",
+        footer: "Conch's Blessing is a fan-made mod for The Binding of Isaac: Repentance."
     },
-    
+
     kr: {
-        // Page titles and headers
-        title: "🐚 <a href=\"https://steamcommunity.com/sharedfiles/filedetails/?id=3545334858\" target=\"_blank\">Conch's Blessing</a>",
-        subtitle: "소라고동의 축복 - 아이템 가이드",
-        introduction: "소개",
-        items: "아이템 목록",
-        keyFeatures: "주요 기능",
-        
-        // Language selector
-        languageLabel: "언어:",
-        autoDetect: "자동 감지",
-        korean: "한국어",
-        english: "English",
-        
-        // Introduction text
-        introText: "Conch's Blessing은 아이작의 번제에 '소라고동의 축복' 업그레이드 시스템을 추가하는 모드입니다. 기존 아이템을 세련된 연출과 함께 변환하고, 언어/스폰/타이밍을 세밀하게 커스터마이징할 수 있습니다.",
-        
-        // Search and filter
-        searchPlaceholder: "아이템 이름, Origin으로 검색...",
-        searchButton: "검색",
-        typeLabel: "타입:",
-        allTypes: "모든 타입",
+        pageTitle: "소라고둥의 축복 - 아이템 도감",
+        subtitle: "아이템 도감",
+        workshop: "스팀 창작마당",
+        languageLabel: "언어",
+        autoDetect: "자동",
+        introText: "마법의 소라고둥이 대답하면, 방 안의 해당 받침대 아이템이 그 대답에 맞는 아이템으로 바뀝니다.",
+        required: "필수 모드",
+
+        searchPlaceholder: "이름, 효과, 원본 아이템으로 검색",
+        clearSearch: "검색어 지우기",
+        allFlags: "전체",
+        positive: "긍정",
+        neutral: "중립",
+        negative: "부정",
         passive: "패시브",
         active: "액티브",
-        trinket: "장신구",
         familiar: "패밀리어",
-        flagLabel: "플래그:",
-        allFlags: "모든 플래그",
-        positive: "긍정적",
-        neutral: "중립적",
-        negative: "부정적",
-        sortLabel: "정렬:",
-        byCreated: "등록순",
-        byName: "이름순",
-        byQuality: "품질순",
-        byType: "타입순",
-        
-        // Features
-        itemUpgrade: "아이템 업그레이드 연출",
-        itemUpgradeDesc: "Before → Morph → After로 자연스럽게 연결되는 업그레이드 시스템",
-        multiLanguage: "다국어 지원",
-        multiLanguageDesc: "HUD/EID 팝업 한/영 자동 적용",
-        naturalSpawn: "자연 스폰 토글",
-        naturalSpawnDesc: "MCM에서 모드 아이템 자연 스폰 ON/OFF",
-        
-        // Footer
-        copyright: "© 2025 Conch's Blessing Mod",
-        required: "필수 모드: <a href=\"https://steamcommunity.com/sharedfiles/filedetails/?id=3540206030\" target=\"_blank\">Magic Conch</a>",
-        
-        // Modal and UI
-        noResults: "검색 결과가 없습니다",
-        noResultsDesc: "다른 검색어나 필터를 시도해보세요",
-        workingInProgress: "작업중인 아이템입니다",
-        
-        // Item properties
-        pool: "풀",
-        tags: "태그",
-        origin: "원본",
-        flag: "플래그",
-        flagDesc: "마법의 소라고둥의 답변 (긍정적, 중립적, 부정적)",
-        
-        // Synergies
+        trinket: "장신구",
+        groupCollectibles: "아이템",
+        groupFamiliars: "패밀리어",
+        groupTrinkets: "장신구",
+        groupWip: "작업 중",
+        itemCount: "아이템 {n}개",
+        matchCount: "{total}개 중 {n}개 일치",
+        noMatch: "일치하는 아이템이 없습니다. 다른 검색어를 써 보세요.",
+        hintWide: "아이콘에 마우스를 올리면 미리 보고, 누르면 고정됩니다.",
+
+        wip: "작업 중",
+        wipText: "아직 만들고 있는 아이템입니다.",
+        effects: "효과",
+        upgrade: "소라고둥 강화",
+        answer: "{flag} 대답",
+        evolvesFrom: "진화 전",
+        evolvesInto: "진화",
         synergies: "시너지",
-        synergyNoDesc: "시너지 설명 없음"
+        synergyFilter: "시너지 검색",
+        noSynergyMatch: "일치하는 시너지가 없습니다.",
+        details: "정보",
+        pools: "등장 위치",
+        tags: "태그",
+        shopPrice: "상점 가격",
+        devilPrice: "악마 거래",
+        charges: "충전량",
+        close: "닫기",
+        copyLink: "링크 복사",
+        linkCopied: "링크를 복사했습니다",
+        flagDesc_positive: "마법의 소라고둥이 긍정으로 대답하면 나타납니다.",
+        flagDesc_neutral: "마법의 소라고둥이 중립으로 대답하면 나타납니다.",
+        flagDesc_negative: "마법의 소라고둥이 부정으로 대답하면 나타납니다.",
+        footer: "Conch's Blessing은 The Binding of Isaac: Repentance 팬 제작 모드입니다."
     }
 };
 
-// 언어 감지 및 자동 선택 함수
 // 브라우저는 한국어를 ko / ko-KR로 알려 주지만 이 사이트의 언어 키는 kr이다.
 const BROWSER_LANGUAGE_ALIASES = { ko: 'kr' };
 
@@ -154,8 +126,13 @@ function detectAndSetLanguage() {
     return 'en'; // 기본값은 영어
 }
 
-// 텍스트 가져오기 함수
-function getText(key, language = null) {
-    const lang = language || getDisplayLanguage();
-    return texts[lang]?.[key] || texts['en'][key] || key;
-} 
+// 텍스트 가져오기; {n} 같은 자리표시는 vars로 채운다.
+function getText(key, language, vars) {
+    let text = texts[language || 'en']?.[key] ?? texts.en[key] ?? key;
+    if (vars) {
+        for (const [name, value] of Object.entries(vars)) {
+            text = text.split(`{${name}}`).join(value);
+        }
+    }
+    return text;
+}
