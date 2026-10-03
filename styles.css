@@ -18,6 +18,9 @@
     --neu: #e8c45c;
     --neg: #ec6f66;
     --radius: 12px;
+    --topbar-min: 56px;
+    /* Sticky offset under the top bar; script.js sets it to the bar's measured height.
+       Never size the bar itself with it, or the measurement feeds back into itself. */
     --topbar-h: 56px;
     --panel-w: clamp(330px, 30vw, 440px);
     --tile: 76px;
@@ -54,7 +57,7 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
     border-bottom: 1px solid var(--line);
 }
 .topbar-inner {
-    max-width: 1600px; margin: 0 auto; min-height: var(--topbar-h);
+    max-width: 1600px; margin: 0 auto; min-height: var(--topbar-min);
     padding: 8px clamp(12px, 3vw, 28px);
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }

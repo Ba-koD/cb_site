@@ -429,10 +429,18 @@
     // The top bar wraps to two rows on narrow screens; sticky offsets follow its real height.
     function trackTopbarHeight() {
         const topbar = document.querySelector('.topbar');
-        const apply = () => document.documentElement.style.setProperty('--topbar-h', `${Math.ceil(topbar.getBoundingClientRect().height)}px`);
+        let last = '';
+        const apply = () => {
+            const height = `${Math.ceil(topbar.getBoundingClientRect().height)}px`;
+            if (height === last) return;
+            last = height;
+            document.documentElement.style.setProperty('--topbar-h', height);
+        };
         apply();
+        // ResizeObserver only reports on rendered frames; the resize event covers viewport changes too.
         if ('ResizeObserver' in window) new ResizeObserver(apply).observe(topbar);
-        else window.addEventListener('resize', apply);
+        window.addEventListener('resize', apply);
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(apply);
     }
 
     function init() {
