@@ -10,7 +10,7 @@ const fs = require('node:fs');
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const base = process.argv[2] || 'http://127.0.0.1:8766/';
-    await page.goto(`${base}#CHRONUS`, { waitUntil: 'networkidle' });
+    await page.goto(`${base}#KRONOS`, { waitUntil: 'networkidle' });
     await page.selectOption('#languageSelect', 'kr');
 
     async function checkComposition(container) {
@@ -138,12 +138,34 @@ const fs = require('node:fs');
     await checkRoutes('en');
     await checkRoutes('kr');
 
+    // Cards and runes: their own group, and a note that they are added, not upgraded.
+    await page.evaluate(() => window.ConchBlessing.select('THURISAZ'));
+    const rune = await page.evaluate(() => ({
+        group: document.querySelector('.tile[data-key="THURISAZ"]')?.closest('.group')?.dataset.group,
+        badge: document.querySelector('#detailPanel .badges .badge')?.textContent,
+        obtain: document.querySelector('#detailPanel .d-obtain')?.textContent || '',
+        upgrade: Boolean(document.querySelector('#detailPanel .d-upgrade')),
+        effects: document.querySelectorAll('#detailPanel .d-effects li').length,
+        img: document.querySelector('#detailPanel .d-icon img')?.getAttribute('src'),
+        loaded: document.querySelector('#detailPanel .d-icon img')?.naturalWidth
+    }));
+    assert.equal(rune.group, 'pockets', 'the rune is not in the rune group');
+    assert.equal(rune.badge, '룬');
+    assert.ok(rune.obtain.includes('새로 추가된 룬'), 'missing the added-rune note');
+    assert.equal(rune.upgrade, false, 'a rune is not a Magic Conch upgrade');
+    assert.equal(rune.effects, 4);
+    assert.equal(rune.img, 'resources/gfx/items/pockets/thurisaz.png');
+    await page.locator('#searchInput').fill('투리사즈');
+    assert.equal(await page.locator('.tile[data-key="THURISAZ"]').evaluate(node => node.classList.contains('dim')), false);
     await page.locator('#searchInput').fill('');
-    await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
+    console.log('PASS rune group, added-not-upgraded note, effects, icon and search');
+
+    await page.locator('#searchInput').fill('');
+    await page.evaluate(() => window.ConchBlessing.select('KRONOS'));
     await page.evaluate(() => { window.testPinnedInput = document.querySelector('#detailPanel [data-synergy-filter]'); });
     await page.locator('.tile[data-key="LIVE_EYE"]').hover();
     await page.locator('.tile[data-key="TYRFING"]').focus();
-    assert.equal(await page.locator('#detailPanel').getAttribute('data-key'), 'CHRONUS');
+    assert.equal(await page.locator('#detailPanel').getAttribute('data-key'), 'KRONOS');
     assert.equal(await page.evaluate(() => window.testPinnedInput === document.querySelector('#detailPanel [data-synergy-filter]')), true);
     await page.locator('.tile[data-key="LIVE_EYE"]').click();
     await page.locator('.tile[data-key="TYRFING"]').hover();
@@ -158,26 +180,26 @@ const fs = require('node:fs');
             client: node.clientHeight, scroll: node.scrollHeight, viewport: window.innerHeight }));
     }
     const shortKey = await page.evaluate(() => Object.entries(items).find(([, item]) => item.workingnowflag)[0]);
-    await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
+    await page.evaluate(() => window.ConchBlessing.select('KRONOS'));
     const tallPanel = await dimensions('#detailPanel');
     assert.ok(tallPanel.height <= 720 && tallPanel.height < tallPanel.viewport);
     assert.ok(tallPanel.scroll > tallPanel.client);
     await page.evaluate(key => window.ConchBlessing.select(key), shortKey);
     assert.ok((await dimensions('#detailPanel')).height < tallPanel.height);
     await page.setViewportSize({ width: 1280, height: 480 });
-    await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
+    await page.evaluate(() => window.ConchBlessing.select('KRONOS'));
     assert.ok((await dimensions('#detailPanel')).height < 480);
     await page.setViewportSize({ width: 1280, height: 900 });
     console.log('PASS desktop preview height cap, short-content shrink and short viewport');
 
     await page.locator('#searchInput').fill('');
-    await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
+    await page.evaluate(() => window.ConchBlessing.select('KRONOS'));
     await page.locator('#detailPanel [data-synergy-filter]').fill('Monster Manual');
     await page.locator('#detailPanel [data-synergy-filter]').scrollIntoViewIfNeeded();
     fs.mkdirSync('.tmp', { recursive: true });
     await page.screenshot({ path: '.tmp/desktop.png' });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.evaluate(() => window.ConchBlessing.select('CHRONUS'));
+    await page.evaluate(() => window.ConchBlessing.select('KRONOS'));
     await checkComposition('#dialogBody');
     const tallSheet = await dimensions('#detailDialog');
     const sheetBody = await dimensions('#dialogBody');

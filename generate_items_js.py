@@ -23,6 +23,14 @@ DYNAMIC_TOKEN = re.compile(r'%[A-Z_]+%')
 SYNERGY_LINE = re.compile(r'\[\s*\{([^{}]*)\}\s*\]\s*=\s*"([^"]+)"')
 OWN_REFERENCE = re.compile(r'\{own:([A-Z0-9_]+)\}')
 EVOLUTION_LINE = re.compile(r'\bevolves? into\b|진화', re.IGNORECASE)
+# Cards and runes (ConchBlessing.PocketData) are additions to the game, not Magic
+# Conch results. Their data is a pure-data registry and their text pockets.<KEY>;
+# the site shows each one's pocket-slot art, the third 32x32 frame of its sheet,
+# cropped into POCKET_ICON_DIR (the Pages workflow copies it beside the items).
+POCKETS_PATH = os.path.join("scripts", "items", "cards", "definitions.lua")
+POCKET_ICON_DIR = "site_pockets"
+POCKET_FRAME = 32
+POCKET_HUD_X = 64
 
 def find_matching_brace(content, start_pos):
     """detect the matching brace position"""
@@ -76,6 +84,40 @@ def load_locale_tables():
             tables[lang] = lua_data.load(path)
             print(f"locale loaded: {path}")
     return tables
+
+def load_pockets(tables):
+    """key -> site entry for every card/rune, with its text and cropped icon.
+    Empty for a source tree that has no pocket items yet."""
+    if not os.path.isfile(POCKETS_PATH):
+        return {}
+    sys.path.insert(0, os.getcwd())
+    import lua_data
+    from PIL import Image
+    os.makedirs(POCKET_ICON_DIR, exist_ok=True)
+    pockets = {}
+    for key, definition in lua_data.load(POCKETS_PATH).items():
+        names, descriptions, eids = {}, {}, {}
+        for lang, table in tables.items():
+            entry = (table.get('pockets') or {}).get(key)
+            if not isinstance(entry, dict):
+                continue
+            if isinstance(entry.get('name'), str):
+                names[lang] = entry['name']
+            if isinstance(entry.get('description'), str):
+                descriptions[lang] = clean_locale_line(entry['description'])
+            if entry.get('eid') is not None:
+                eids[lang] = locale_lines(entry['eid'])
+        if 'en' not in names:
+            raise ValueError(f"pocket item {key} has no English name under pockets in scripts/locale/en.lua")
+        sheet = Image.open(os.path.join("resources", "gfx", definition['gfx'])).convert('RGBA')
+        icon = sheet.crop((POCKET_HUD_X, 0, POCKET_HUD_X + POCKET_FRAME, POCKET_FRAME))
+        icon.save(os.path.join(POCKET_ICON_DIR, f"{key.lower()}.png"))
+        pockets[key] = {'type': definition.get('type', 'card'), 'pocket': True,
+                        'gfx': f"resources/gfx/items/pockets/{key.lower()}.png",
+                        'mimiccharge': definition.get('mimiccharge', 0),
+                        'names': names, 'descriptions': descriptions, 'eids': eids}
+        print(f"  pocket {key}: names={list(names)} eid={ {k: len(v) for k, v in eids.items()} }")
+    return pockets
 
 def parse_synergy_line_keys(synergies_data):
     """[(site key, 'collectible'|'trinket', locale line key)] from entries such as
@@ -778,7 +820,17 @@ const items = {
         # WorkingNow 아이템인지 확인
         is_working_now = len(item_info) == 3 and 'names' in item_info and 'descriptions' in item_info and 'eids' in item_info
         
-        if is_working_now:
+        if item_info.get('pocket'):
+            # A card or rune: no pools, quality, origin or answer.
+            js_content += f"""    {item_key}: {{
+        type: {json.dumps(item_info['type'])},
+        pocket: true,
+        gfx: {json.dumps(item_info['gfx'])},
+        mimiccharge: {int(item_info.get('mimiccharge', 0))},
+        names: {json.dumps(item_info['names'], ensure_ascii=False)},
+        descriptions: {json.dumps(item_info['descriptions'], ensure_ascii=False)},
+        eids: {json.dumps(item_info['eids'], ensure_ascii=False)}"""
+        elif is_working_now:
             # WorkingNow 아이템은 names, descriptions, eids, gfx, workingnowflag만 출력
             js_content += f"""    {item_key}: {{
         gfx: "resources/gfx/items/collectibles/{item_key.lower()}.png",
@@ -923,6 +975,11 @@ def main():
     tables = load_locale_tables()
     if tables:
         apply_locale(items, tables)
+        pockets = load_pockets(tables)
+        clash = sorted(set(pockets) & set(items))
+        if clash:
+            raise ValueError(f"pocket item keys clash with ItemData keys: {clash}")
+        items.update(pockets)
 
     print(f"found items: {len(items)}")
     for name, info in items.items():

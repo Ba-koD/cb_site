@@ -69,6 +69,11 @@ jobs:
           mkdir -p build/resources/gfx/items/collectibles build/resources/gfx/items/trinkets
           rsync -a --delete source/resources/gfx/items/collectibles/ build/resources/gfx/items/collectibles/
           rsync -a --delete source/resources/gfx/items/trinkets/ build/resources/gfx/items/trinkets/
+          # Cards and runes: generate_items_js.py crops their pocket-slot art here.
+          if [ -d source/site_pockets ]; then
+            mkdir -p build/resources/gfx/items/pockets
+            rsync -a --delete source/site_pockets/ build/resources/gfx/items/pockets/
+          fi
           # 3) 생성 산출물
           cp -v source/items.js build/
           cp -v itemmap.js build/

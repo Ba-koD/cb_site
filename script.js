@@ -34,10 +34,13 @@
         if (item.names && item.names.en) BY_ENGLISH_NAME[item.names.en.toLowerCase()] = item.key;
     }
     const isWip = item => item.workingnowflag === true;
+    // Cards and runes are additions to the game, not Magic Conch results.
+    const isPocket = item => item.pocket === true;
     const GROUPS = [
-        { id: 'collectibles', text: 'groupCollectibles', test: item => !isWip(item) && item.type !== 'familiar' && item.type !== 'trinket' },
+        { id: 'collectibles', text: 'groupCollectibles', test: item => !isWip(item) && !isPocket(item) && item.type !== 'familiar' && item.type !== 'trinket' },
         { id: 'familiars', text: 'groupFamiliars', test: item => !isWip(item) && item.type === 'familiar' },
         { id: 'trinkets', text: 'groupTrinkets', test: item => !isWip(item) && item.type === 'trinket' },
+        { id: 'pockets', text: 'groupPockets', test: item => !isWip(item) && isPocket(item) },
         { id: 'wip', text: 'groupWip', test: isWip }
     ];
 
@@ -256,6 +259,8 @@
         const lines = effects(item);
         const effectsHtml = lines.length
             ? `<section class="d-section"><h3>${escapeHtml(t('effects'))}</h3><ul class="d-effects">${lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></section>` : '';
+        const obtainHtml = isPocket(item)
+            ? `<section class="d-section d-obtain"><h3>${escapeHtml(t('obtain'))}</h3><p class="path-note">${escapeHtml(t('pocketSource_' + item.type))}</p></section>` : '';
 
         const origin = originOf(item);
         const children = CHILDREN[item.key] || [];
@@ -292,7 +297,7 @@
 
         return `${head}
             ${description ? `<p class="d-quote">“${escapeHtml(description)}”</p>` : ''}
-            ${effectsHtml}${upgradeHtml}${childrenHtml}${evolutionHtml}${factsHtml}
+            ${effectsHtml}${obtainHtml}${upgradeHtml}${childrenHtml}${evolutionHtml}${factsHtml}
             <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>${synergyHtml}`;
     }
 
