@@ -34,6 +34,7 @@
         if (item.names && item.names.en) BY_ENGLISH_NAME[item.names.en.toLowerCase()] = item.key;
     }
     const isWip = item => item.workingnowflag === true;
+    const FX_VIEW = 'fx';
     // Cards and runes are additions to the game, not Magic Conch results.
     const isPocket = item => item.pocket === true;
     const GROUPS = [
@@ -155,6 +156,8 @@
         document.getElementById('dialogClose').setAttribute('aria-label', t('close'));
         // The auto option names the language it detected, so the control reads as a language setting.
         document.getElementById('autoOption').textContent = t('autoDetect', { lang: LANGUAGE_NAMES[state.detected] || state.detected });
+        const frame = document.getElementById('fxFrame');
+        frame.title = t(frame.dataset.title);
         document.getElementById('languageSelect').value = state.language;
     }
 
@@ -264,9 +267,14 @@
 
         const origin = originOf(item);
         const children = CHILDREN[item.key] || [];
+        // The upgrade presentation opens in the 강화 연출 tab on this item.
+        const fxHtml = item.fx ? `<div class="fx-row"><button type="button" class="button ghost" data-fx="${escapeHtml(item.key)}">▶ ${escapeHtml(t('watchFx'))}</button>
+            <span class="fx-state">${escapeHtml(t(item.fx === 'applied' ? 'fxApplied' : 'fxPending'))}</span></div>` : '';
         let upgradeHtml = '';
         if (origin && FLAGS.includes(item.flag)) {
-            upgradeHtml = `<section class="d-section d-upgrade"><h3>${escapeHtml(t('upgrade'))}</h3>${upgradePath(origin, item)}</section>`;
+            upgradeHtml = `<section class="d-section d-upgrade"><h3>${escapeHtml(t('upgrade'))}</h3>${upgradePath(origin, item)}${fxHtml}</section>`;
+        } else if (fxHtml) {
+            upgradeHtml = `<section class="d-section d-upgrade"><h3>${escapeHtml(t('upgrade'))}</h3>${fxHtml}</section>`;
         }
         const childrenHtml = children.length
             ? `<section class="d-section d-upgrade-results"><h3>${escapeHtml(t('upgradeResults'))}</h3>${children.map(child => upgradePath({ own: item }, child)).join('')}</section>` : '';
@@ -336,6 +344,35 @@
         delete panel.dataset.stale;
         renderDetail(panel, key, `<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>`);
         panel.scrollTop = 0;
+    }
+
+    // ---------- views ----------
+    // #fx or #fx/KEY shows the upgrade presentation player; anything else the codex.
+    // The 14 MB player loads only the first time the tab opens, and a later item
+    // changes only its link fragment, so it never reloads.
+    function fxKeyOf(hash) {
+        const value = decodeURIComponent(String(hash || '').replace(/^#/, ''));
+        if (value !== FX_VIEW && !value.startsWith(FX_VIEW + '/')) return null;
+        return value.slice(FX_VIEW.length + 1);
+    }
+    function showView(view, fxKey) {
+        const fx = view === FX_VIEW;
+        document.getElementById('codexView').hidden = fx;
+        document.getElementById('fxView').hidden = !fx;
+        document.querySelectorAll('.tab').forEach(tab => {
+            if (tab.dataset.view === view) tab.setAttribute('aria-current', 'page'); else tab.removeAttribute('aria-current');
+        });
+        if (!fx) return;
+        closeSheet();
+        const frame = document.getElementById('fxFrame');
+        const target = frame.dataset.src + (fxKey ? `#${encodeURIComponent(fxKey)}` : '');
+        if (frame.getAttribute('src') !== target) frame.setAttribute('src', target);
+    }
+    function route() {
+        const fxKey = fxKeyOf(location.hash);
+        if (fxKey !== null) { showView(FX_VIEW, fxKey); return true; }
+        showView('codex');
+        return false;
     }
 
     // ---------- selection ----------
@@ -408,6 +445,8 @@
         document.addEventListener('click', event => {
             const goto = event.target.closest('[data-goto]');
             if (goto) { select(goto.dataset.goto); return; }
+            const fx = event.target.closest('[data-fx]');
+            if (fx) { location.hash = `${FX_VIEW}/${fx.dataset.fx}`; return; }
             const copy = event.target.closest('[data-copy-link]');
             if (copy) {
                 const url = `${location.origin}${location.pathname}#${encodeURIComponent(copy.dataset.copyLink)}`;
@@ -424,7 +463,8 @@
             // The close event is queued; another item may already have reopened the sheet.
             if (dialog.open) return;
             state.sheetKey = null;
-            if (!WIDE.matches) setHash(null);
+            // Closing the sheet clears an item link, never the upgrade-effects route.
+            if (!WIDE.matches && fxKeyOf(location.hash) === null) setHash(null);
             markCurrent();
         });
 
@@ -460,6 +500,7 @@
         });
 
         window.addEventListener('hashchange', () => {
+            if (route()) return;
             const key = decodeURIComponent(location.hash.slice(1));
             if (BY_KEY[key]) select(key);
         });
@@ -500,6 +541,7 @@
         bindEvents();
         rerenderAll();
 
+        if (route()) return;
         const hashKey = decodeURIComponent(location.hash.slice(1));
         if (BY_KEY[hashKey]) select(hashKey);
     }

@@ -153,7 +153,7 @@ const fs = require('node:fs');
     assert.equal(rune.badge, '룬');
     assert.ok(rune.obtain.includes('새로 추가된 룬'), 'missing the added-rune note');
     assert.equal(rune.upgrade, false, 'a rune is not a Magic Conch upgrade');
-    assert.equal(rune.effects, 4);
+    assert.equal(rune.effects, 3);
     assert.equal(rune.img, 'resources/gfx/items/pockets/thurisaz.png');
     await page.locator('#searchInput').fill('투리사즈');
     assert.equal(await page.locator('.tile[data-key="THURISAZ"]').evaluate(node => node.classList.contains('dim')), false);

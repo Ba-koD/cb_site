@@ -28,6 +28,10 @@ EVOLUTION_LINE = re.compile(r'\bevolves? into\b|진화', re.IGNORECASE)
 # the site shows each one's pocket-slot art, the third 32x32 frame of its sheet,
 # cropped into POCKET_ICON_DIR (the Pages workflow copies it beside the items).
 POCKETS_PATH = os.path.join("scripts", "items", "cards", "definitions.lua")
+# Items with an upgrade presentation in the mod's standalone preview player
+# (docs/previews/item-upgrade-player.html, published as upgrade-player.html):
+# rows with an effect are applied in game, the others are concepts.
+FX_CATALOG_PATH = os.path.join("scripts", "upgrade_visual_catalog.lua")
 POCKET_ICON_DIR = "site_pockets"
 POCKET_FRAME = 32
 POCKET_HUD_X = 64
@@ -118,6 +122,18 @@ def load_pockets(tables):
                         'names': names, 'descriptions': descriptions, 'eids': eids}
         print(f"  pocket {key}: names={list(names)} eid={ {k: len(v) for k, v in eids.items()} }")
     return pockets
+
+def apply_fx(items):
+    """Mark each item the preview player can show: 'applied' or 'pending'."""
+    if not os.path.isfile(FX_CATALOG_PATH):
+        return
+    sys.path.insert(0, os.getcwd())
+    import lua_data
+    for row in lua_data.load(FX_CATALOG_PATH):
+        key = row.get('key') if isinstance(row, dict) else None
+        if key in items and not items[key].get('pocket'):
+            items[key]['fx'] = 'applied' if row.get('effect') else 'pending'
+            print(f"  fx {key}: {items[key]['fx']}")
 
 def parse_synergy_line_keys(synergies_data):
     """[(site key, 'collectible'|'trinket', locale line key)] from entries such as
@@ -894,6 +910,8 @@ const items = {
         soulhearts: {item_info.get('soulhearts', 0)},
         origin: {origin_js},
         flag: {flag_js}"""
+            if item_info.get('fx'):
+                js_content += f",\n        fx: {json.dumps(item_info['fx'])}"
 
             # entity/gibs for familiars
             if item_type == 'familiar':
@@ -980,6 +998,7 @@ def main():
         if clash:
             raise ValueError(f"pocket item keys clash with ItemData keys: {clash}")
         items.update(pockets)
+        apply_fx(items)
 
     print(f"found items: {len(items)}")
     for name, info in items.items():

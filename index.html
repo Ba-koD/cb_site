@@ -23,6 +23,10 @@
                 <span class="brand-name">Conch's Blessing</span>
                 <span class="brand-sub" data-text="subtitle">아이템 도감</span>
             </a>
+            <nav class="tabs" aria-label="Sections">
+                <a class="tab" href="#" data-view="codex" data-text="tabCodex">아이템 도감</a>
+                <a class="tab" href="#fx" data-view="fx" data-text="tabFx">강화 연출</a>
+            </nav>
             <div class="topbar-actions">
                 <a class="button" href="https://steamcommunity.com/sharedfiles/filedetails/?id=3545334858" target="_blank" rel="noopener" data-text="workshop">스팀 창작마당</a>
                 <label class="language">
@@ -38,7 +42,7 @@
         </div>
     </header>
 
-    <div class="page">
+    <div class="page" id="codexView">
         <main class="codex">
             <p class="intro"><span data-text="introText"></span>
                 <span class="required"><span data-text="required">필수 모드</span>:
@@ -60,6 +64,11 @@
 
         <aside class="panel" id="detailPanel" aria-label="Item details"></aside>
     </div>
+
+    <section class="fx-view" id="fxView" hidden>
+        <p class="fx-intro" data-text="fxIntro"></p>
+        <iframe id="fxFrame" class="fx-frame" data-src="upgrade-player.html?v=__BUILD__" data-title="fxFrameTitle"></iframe>
+    </section>
 
     <footer class="footer">
         <p data-text="footer"></p>

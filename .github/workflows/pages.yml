@@ -74,6 +74,11 @@ jobs:
             mkdir -p build/resources/gfx/items/pockets
             rsync -a --delete source/site_pockets/ build/resources/gfx/items/pockets/
           fi
+          # Upgrade presentations: the mod's standalone preview player, opened by the
+          # codex's 강화 연출 tab (and each item's button) only when asked for.
+          if [ -f source/docs/previews/item-upgrade-player.html ]; then
+            cp -v source/docs/previews/item-upgrade-player.html build/upgrade-player.html
+          fi
           # 3) 생성 산출물
           cp -v source/items.js build/
           cp -v itemmap.js build/
