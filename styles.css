@@ -109,8 +109,19 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
     width: 100%; flex: 1; min-height: 560px; height: calc(100dvh - var(--topbar-h) - 120px);
     border: 1px solid var(--line); border-radius: var(--radius); background: #10100f;
 }
-.fx-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; }
-.fx-state { color: var(--muted); font-size: 12.5px; }
+.fx-mini { margin-top: 10px; }
+.fx-poster {
+    display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 48px;
+    padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: #10100f;
+    color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.fx-poster:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.fx-poster-icon { color: #d1b37b; font-size: 13px; }
+.fx-mini-frame {
+    display: block; width: 100%; aspect-ratio: 16 / 10.4; border: 1px solid var(--line);
+    border-radius: var(--radius); background: #10100f;
+}
+.fx-state { margin-top: 6px; color: var(--muted); font-size: 12.5px; }
 
 /* ---------- page layout ---------- */
 .page {
