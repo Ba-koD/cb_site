@@ -35,9 +35,10 @@
     }
     const isWip = item => item.workingnowflag === true;
     const FX_VIEW = 'fx';
-    // Item details play the upgrade presentation in a small embedded player. It is
-    // 14 MB, so it loads only after the visitor presses play once; after that, items
-    // they pick (never hover previews) load it straight away for this visit.
+    // Item details show the upgrade presentation in a small embedded player that
+    // plays when pressed. Each detail view (desktop panel, mobile sheet) keeps one
+    // player for good and only tells it which item to show, so moving between
+    // items never reloads the 14 MB page or adds history entries.
     const FX_EMBED = (() => {
         const src = document.getElementById('fxFrame').dataset.src;
         return src + (src.includes('?') ? '&' : '?') + 'embed=1';
@@ -74,7 +75,8 @@
     const normalizeSearch = value => String(value || '').normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
 
     // ---------- state ----------
-    const state = { language: 'auto', detected: 'en', query: '', flag: 'all', pinned: null, preview: null, sheetKey: null, fxAuto: false };
+    const state = { language: 'auto', detected: 'en', query: '', flag: 'all', pinned: null, preview: null, sheetKey: null };
+    const FX_MARK = '<!--fx-->';
 
     const lang = () => (state.language === 'auto' ? state.detected : state.language);
     const t = (key, vars) => getText(key, lang(), vars);
@@ -274,15 +276,9 @@
 
         const origin = originOf(item);
         const children = CHILDREN[item.key] || [];
-        // The upgrade presentation opens in the 강화 연출 tab on this item.
-        const fxHtml = item.fx ? `<div class="fx-mini" data-fx-mini="${escapeHtml(item.key)}"><button type="button" class="fx-poster" data-fx-play>
-                <span class="fx-poster-icon" aria-hidden="true">▶</span><span>${escapeHtml(t('playFx'))}</span></button></div>
-            <p class="fx-state">${escapeHtml(t(item.fx === 'applied' ? 'fxApplied' : 'fxPending'))}</p>` : '';
         let upgradeHtml = '';
         if (origin && FLAGS.includes(item.flag)) {
-            upgradeHtml = `<section class="d-section d-upgrade"><h3>${escapeHtml(t('upgrade'))}</h3>${upgradePath(origin, item)}${fxHtml}</section>`;
-        } else if (fxHtml) {
-            upgradeHtml = `<section class="d-section d-upgrade"><h3>${escapeHtml(t('upgrade'))}</h3>${fxHtml}</section>`;
+            upgradeHtml = `<section class="d-section d-upgrade"><h3>${escapeHtml(t('upgrade'))}</h3>${upgradePath(origin, item)}</section>`;
         }
         const childrenHtml = children.length
             ? `<section class="d-section d-upgrade-results"><h3>${escapeHtml(t('upgradeResults'))}</h3>${children.map(child => upgradePath({ own: item }, child)).join('')}</section>` : '';
@@ -313,32 +309,72 @@
 
         return `${head}
             ${description ? `<p class="d-quote">“${escapeHtml(description)}”</p>` : ''}
-            ${effectsHtml}${obtainHtml}${upgradeHtml}${childrenHtml}${evolutionHtml}${factsHtml}
+            ${effectsHtml}${obtainHtml}${upgradeHtml}${FX_MARK}${childrenHtml}${evolutionHtml}${factsHtml}
             <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>${synergyHtml}`;
-    }
-
-    // Swaps an item's play button for the small player, which starts on that item.
-    function mountFx(slot) {
-        if (!slot || slot.querySelector('iframe')) return;
-        const frame = document.createElement('iframe');
-        frame.className = 'fx-mini-frame';
-        frame.title = t('fxFrameTitle');
-        frame.allow = 'autoplay';
-        frame.src = `${FX_EMBED}#${encodeURIComponent(slot.dataset.fxMini)}`;
-        slot.replaceChildren(frame);
     }
 
     function stopFrame(frame) {
         try { frame.contentWindow?.postMessage({ type: 'conch-upgrade', action: 'stop' }, '*'); } catch (_) { /* not loaded */ }
     }
 
+    // A detail view's parts: the text before and after the player, and the player
+    // section itself, which survives every re-render.
+    function detailParts(container) {
+        const parts = container.fxParts;
+        if (parts && parts.top.parentNode === container) return parts;
+        const top = document.createElement('div'), bottom = document.createElement('div');
+        const fx = document.createElement('section');
+        fx.className = 'd-section fx-section';
+        fx.hidden = true;
+        fx.innerHTML = '<h3></h3><div class="fx-slot"></div><p class="fx-state"></p>';
+        container.replaceChildren(top, fx, bottom);
+        return (container.fxParts = { top, fx, bottom });
+    }
+
+    // Shows the item's presentation in the view's player, creating it the first time.
+    function showFx(fx, item) {
+        let frame = fx.querySelector('iframe');
+        if (!item.fx) {
+            fx.hidden = true;
+            if (frame) stopFrame(frame);
+            return;
+        }
+        fx.hidden = false;
+        fx.querySelector('h3').textContent = t('tabFx');
+        fx.querySelector('.fx-state').textContent = t(item.fx === 'applied' ? 'fxApplied' : 'fxPending');
+        if (!frame) {
+            frame = document.createElement('iframe');
+            frame.className = 'fx-mini-frame';
+            frame.allow = 'autoplay';
+            frame.loading = 'lazy';
+            frame.addEventListener('load', () => {
+                frame.dataset.loaded = '1';
+                if (frame.dataset.key !== frame.dataset.shown) showFxKey(frame);
+            });
+            frame.dataset.key = frame.dataset.shown = item.key;
+            frame.src = `${FX_EMBED}#${encodeURIComponent(item.key)}`;
+            fx.querySelector('.fx-slot').append(frame);
+        }
+        frame.title = t('fxFrameTitle');
+        frame.dataset.key = item.key;
+        if (frame.dataset.loaded) showFxKey(frame);
+    }
+
+    function showFxKey(frame) {
+        if (frame.dataset.shown === frame.dataset.key) return;
+        frame.dataset.shown = frame.dataset.key;
+        try { frame.contentWindow?.postMessage({ type: 'conch-upgrade', action: 'show', key: frame.dataset.key }, '*'); } catch (_) { /* gone */ }
+    }
+
     // Renders an item into the panel or the sheet body, keeping the synergy filter usable.
-    // `chosen` marks an item the visitor picked rather than a hover/focus preview.
-    function renderDetail(container, key, extraHtml, chosen) {
+    function renderDetail(container, key, extraHtml) {
         const item = BY_KEY[key];
         if (!item) { container.innerHTML = ''; return; }
-        container.innerHTML = detailHtml(item) + (extraHtml || '');
-        if (chosen && state.fxAuto) mountFx(container.querySelector('[data-fx-mini]'));
+        const parts = detailParts(container);
+        const [before, after] = detailHtml(item).split(FX_MARK);
+        parts.top.innerHTML = before;
+        parts.bottom.innerHTML = after + (extraHtml || '');
+        showFx(parts.fx, item);
         const filter = container.querySelector('[data-synergy-filter]');
         if (!filter) return;
         const rows = Array.from(container.querySelectorAll('[data-synergy-search]'));
@@ -367,7 +403,7 @@
         if (panel.dataset.key === key && !panel.dataset.stale) return;
         panel.dataset.key = key || '';
         delete panel.dataset.stale;
-        renderDetail(panel, key, `<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>`, Boolean(state.pinned) && key === state.pinned);
+        renderDetail(panel, key, `<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>`);
         panel.scrollTop = 0;
     }
 
@@ -412,7 +448,7 @@
     function openSheet(key) {
         const dialog = document.getElementById('detailDialog');
         state.sheetKey = key;
-        renderDetail(document.getElementById('dialogBody'), key, '', true);
+        renderDetail(document.getElementById('dialogBody'), key);
         document.getElementById('dialogBody').scrollTop = 0;
         if (!dialog.open) dialog.showModal();
         markCurrent();
@@ -473,8 +509,6 @@
         document.addEventListener('click', event => {
             const goto = event.target.closest('[data-goto]');
             if (goto) { select(goto.dataset.goto); return; }
-            const playFx = event.target.closest('[data-fx-play]');
-            if (playFx) { state.fxAuto = true; mountFx(playFx.closest('[data-fx-mini]')); return; }
             const copy = event.target.closest('[data-copy-link]');
             if (copy) {
                 const url = `${location.origin}${location.pathname}#${encodeURIComponent(copy.dataset.copyLink)}`;
@@ -491,7 +525,7 @@
             // The close event is queued; another item may already have reopened the sheet.
             if (dialog.open) return;
             state.sheetKey = null;
-            document.querySelectorAll('#dialogBody .fx-mini-frame').forEach(frame => frame.remove());
+            document.querySelectorAll('#dialogBody .fx-mini-frame').forEach(stopFrame);
             // Closing the sheet clears an item link, never the upgrade-effects route.
             if (!WIDE.matches && fxKeyOf(location.hash) === null) setHash(null);
             markCurrent();
@@ -552,7 +586,7 @@
         const panel = document.getElementById('detailPanel');
         panel.dataset.stale = '1';
         renderPanel();
-        if (state.sheetKey) renderDetail(document.getElementById('dialogBody'), state.sheetKey, '', true);
+        if (state.sheetKey) renderDetail(document.getElementById('dialogBody'), state.sheetKey);
     }
 
     // The top bar wraps to two rows on narrow screens; sticky offsets follow its real height.
