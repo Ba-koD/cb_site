@@ -168,8 +168,15 @@ const fs = require('node:fs');
             return [key, label ? label.nextElementSibling.textContent : null];
         })));
     assert.deepEqual(stacking, { DRAGON: '중첩 가능', TIME_MONEY: '중첩 가능', KRONOS: '중첩 불가', POWER_TRAINING: '중첩 불가',
-        TIME_POWER: '중첩 가능', ATROPOS: '중첩 불가', ANGELS_CROWN: '황금·엄마의 상자만', THURISAZ: null });
-    console.log('PASS stacking fact on collectibles and trinkets (golden-only included), none on runes');
+        TIME_POWER: '중첩 가능', ATROPOS: '중첩 불가', ANGELS_CROWN: '중첩 가능', THURISAZ: null });
+    console.log('PASS stacking fact on collectibles and trinkets (golden/Mom\'s Box count as stacking), none on runes');
+
+    // A quality icon in the EID stands in for its grade, so the effect text keeps the digit.
+    await page.evaluate(() => window.ConchBlessing.select('CONCH_PEARL'));
+    const pearl = await page.locator('#detailPanel .d-effects li').allTextContents();
+    assert.equal(pearl[0], '0/1등급 아이템이 등장하지 않습니다.');
+    assert.ok(pearl[1].startsWith('2등급 '), pearl[1]);
+    console.log('PASS quality icons keep their grade in effect text');
 
     // Filter button: values in a group widen, groups narrow, features need all chosen, reset clears.
     const visibleKeys = () => page.evaluate(() => [...document.querySelectorAll('.tile:not(.dim)')].map(tile => tile.dataset.key).sort());
@@ -186,10 +193,13 @@ const fs = require('node:fs');
     assert.deepEqual(await visibleKeys(), await expected("item.type === 'familiar' || item.type === 'active'"));
     await chip('stacking', 'noStack').click();
     assert.deepEqual(await visibleKeys(), await expected("(item.type === 'familiar' || item.type === 'active') && item.stackable === false"));
-    await chip('stacking', 'goldenOnly').click();
+    assert.equal(await chip('stacking', 'goldenOnly').count(), 0, 'golden-only is not a separate stacking value');
+    await chip('stacking', 'noStack').click();
+    await chip('stacking', 'stacks').click();
     await chip('kind', 'trinket').click();
-    assert.deepEqual(await visibleKeys(), await expected("['familiar', 'active', 'trinket'].includes(item.type) && (item.stackable === false || item.stackable === 'golden')"));
-    await chip('stacking', 'goldenOnly').click();
+    assert.deepEqual(await visibleKeys(), await expected("['familiar', 'active', 'trinket'].includes(item.type) && item.stackable === true"));
+    await chip('stacking', 'stacks').click();
+    await chip('stacking', 'noStack').click();
     await chip('kind', 'trinket').click();
     assert.equal(await page.locator('#filterBadge').textContent(), '3');
     await page.locator('#filterPanel [data-filter-reset]').click();

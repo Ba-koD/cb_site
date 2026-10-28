@@ -54,6 +54,8 @@ def find_matching_brace(content, start_pos):
 
 def clean_eid_text(text):
     """clean EID text by removing {{}} templates and # symbols"""
+    # A quality icon stands in for its grade ("{{Quality0}}/{{Quality1}}등급"), so keep the digit.
+    text = re.sub(r'\{\{Quality(\d)\}\}', r'\1', text)
     # {{Damage}} 같은 템플릿 문법 제거
     text = re.sub(r'\{\{[^}]+\}\}', '', text)
     # # 기호 제거
@@ -495,10 +497,9 @@ def parse_lua_file(file_path):
 
         # extract stackable: whether more copies change the item's effect (the
         # registry marks only the ones that do; actives never stack). A trinket
-        # marked "golden" changes only with a golden copy or Mom's Box.
-        stackable_match = re.search(r'\bstackable\s*=\s*(true|false|"golden")', item_data)
-        stackable_value = stackable_match.group(1) if stackable_match else 'false'
-        item_info['stackable'] = 'golden' if stackable_value == '"golden"' else stackable_value == 'true'
+        # stacks when golden copies, Mom's Box or more copies strengthen it.
+        stackable_match = re.search(r'\bstackable\s*=\s*(true|false)', item_data)
+        item_info['stackable'] = bool(stackable_match) and stackable_match.group(1) == 'true'
         
         # extract shopprice
         shopprice_match = re.search(r'shopprice\s*=\s*(\d+)', item_data)

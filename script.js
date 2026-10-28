@@ -92,9 +92,8 @@
     const flagColor = flag => FLAG_COLORS[flag] || 'transparent';
     const poolsOf = item => (item.pools || []).map(pool => (typeof pool === 'string' ? pool : Object.keys(pool).find(k => k.startsWith('ROOM_')))).filter(Boolean);
     const poolName = pool => (POOL_NAMES[pool] || [])[lang() === 'kr' ? 0 : 1] || titleCase(pool.replace(/^ROOM_/, ''));
-    // A trinket marked "golden" changes only with a golden copy or Mom's Box.
-    const stackingOf = item => (item.stackable === true ? 'stacks' : item.stackable === false ? 'noStack'
-        : item.stackable === 'golden' ? 'goldenOnly' : null);
+    // A trinket stacks when golden copies, Mom's Box or more copies strengthen it.
+    const stackingOf = item => (item.stackable === true ? 'stacks' : item.stackable === false ? 'noStack' : null);
     // Every upgrade plays the default animation, so only an item's own presentation
     // counts; a pending concept still plays the default in game.
     const hasOwnFx = item => item.fx === 'applied';
@@ -163,7 +162,7 @@
         { id: 'quality', text: 'filterQuality', values: ['0', '1', '2', '3', '4'],
             label: value => `★${value}`, test: (item, value) => typeof item.quality === 'number' && String(item.quality) === value },
         { id: 'pool', text: 'pools', values: Object.keys(POOL_NAMES), label: poolName, test: (item, value) => poolsOf(item).includes(value) },
-        { id: 'stacking', text: 'stacking', values: ['stacks', 'goldenOnly', 'noStack'], label: value => t(value),
+        { id: 'stacking', text: 'stacking', values: ['stacks', 'noStack'], label: value => t(value),
             test: (item, value) => stackingOf(item) === value },
         { id: 'feature', text: 'filterFeature', every: true, values: ['fx', 'synergies', 'evolution'], label: value => t(`feature_${value}`),
             test: (item, value) => (value === 'fx' ? hasOwnFx(item)
