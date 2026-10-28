@@ -34,7 +34,7 @@ const fs = require('node:fs');
             return { stable: root.querySelector('[data-synergy-filter]') === input,
                 focused: document.activeElement === input, caret: input.selectionStart,
                 before, whileComposing, matches: after.map(row => row.textContent), target,
-                last: root.querySelector('.d-section:last-of-type').classList.contains('d-synergies'),
+                last: [...root.querySelectorAll('.d-section')].at(-1).classList.contains('d-synergies'),
                 img: after[0]?.querySelector('img')?.getAttribute('src') };
         }, container);
         assert.equal(result.stable, true, 'filter input replaced');
@@ -159,6 +159,50 @@ const fs = require('node:fs');
     assert.equal(await page.locator('.tile[data-key="THURISAZ"]').evaluate(node => node.classList.contains('dim')), false);
     await page.locator('#searchInput').fill('');
     console.log('PASS rune group, added-not-upgraded note, effects, icon and search');
+
+    // Stacking: every collectible says whether copies stack; trinkets and runes do not.
+    const stacking = await page.evaluate(() => Object.fromEntries(
+        ['DRAGON', 'TIME_MONEY', 'KRONOS', 'POWER_TRAINING', 'ATROPOS', 'THURISAZ'].map(key => {
+            window.ConchBlessing.select(key);
+            const label = [...document.querySelectorAll('#detailPanel .facts dt')].find(dt => dt.textContent === '중첩');
+            return [key, label ? label.nextElementSibling.textContent : null];
+        })));
+    assert.deepEqual(stacking, { DRAGON: '중첩 가능', TIME_MONEY: '중첩 가능', KRONOS: '중첩 불가',
+        POWER_TRAINING: '중첩 불가', ATROPOS: null, THURISAZ: null });
+    console.log('PASS stacking fact on passives, familiars and actives, none on trinkets or runes');
+
+    // Filter button: values in a group widen, groups narrow, features need all chosen, reset clears.
+    const visibleKeys = () => page.evaluate(() => [...document.querySelectorAll('.tile:not(.dim)')].map(tile => tile.dataset.key).sort());
+    const expected = predicate => page.evaluate(source => Object.entries(items)
+        .filter(([, item]) => !item.workingnowflag && new Function('item', `return ${source}`)(item))
+        .map(([key]) => key).sort(), predicate);
+    assert.equal(await page.locator('#filterPanel').isHidden(), true, 'filter panel starts closed');
+    await page.locator('#filterToggle').click();
+    assert.equal(await page.locator('#filterToggle').getAttribute('aria-expanded'), 'true');
+    const chip = (group, value) => page.locator(`#filterPanel [data-filter="${group}"][data-value="${value}"]`);
+    await chip('kind', 'familiar').click();
+    assert.deepEqual(await visibleKeys(), await expected("item.type === 'familiar'"));
+    await chip('kind', 'active').click();
+    assert.deepEqual(await visibleKeys(), await expected("item.type === 'familiar' || item.type === 'active'"));
+    await chip('stacking', 'noStack').click();
+    assert.deepEqual(await visibleKeys(), await expected("(item.type === 'familiar' || item.type === 'active') && item.stackable === false"));
+    assert.equal(await page.locator('#filterBadge').textContent(), '3');
+    await page.locator('#filterPanel [data-filter-reset]').click();
+    assert.equal(await page.locator('#filterBadge').isHidden(), true, 'badge stays after reset');
+    assert.equal((await visibleKeys()).length, await page.evaluate(() => Object.values(items).length));
+    await chip('feature', 'fx').click();
+    await chip('feature', 'synergies').click();
+    assert.deepEqual(await visibleKeys(), await expected("Boolean(item.fx) && Object.keys(item.synergies || {}).length > 0"));
+    await chip('feature', 'fx').click();
+    await chip('feature', 'synergies').click();
+    await chip('pool', 'ROOM_ANGEL').click();
+    await chip('quality', '4').click();
+    assert.deepEqual(await visibleKeys(), await expected("(item.pools || []).some(pool => pool === 'ROOM_ANGEL' || pool.ROOM_ANGEL) && item.quality === 4"));
+    assert.ok((await page.locator('#resultCount').textContent()).includes('일치'), 'count should report a filtered match');
+    await page.locator('#filterPanel [data-filter-reset]').click();
+    await page.locator('#filterPanel').press('Escape');
+    assert.equal(await page.locator('#filterPanel').isHidden(), true, 'Escape closes the panel');
+    console.log('PASS filter panel: OR within a group, AND across groups and features, badge, reset, Escape');
 
     await page.locator('#searchInput').fill('');
     await page.evaluate(() => window.ConchBlessing.select('KRONOS'));

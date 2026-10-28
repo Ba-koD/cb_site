@@ -75,7 +75,7 @@
     const normalizeSearch = value => String(value || '').normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
 
     // ---------- state ----------
-    const state = { language: 'auto', detected: 'en', query: '', flag: 'all', pinned: null, preview: null, sheetKey: null };
+    const state = { language: 'auto', detected: 'en', query: '', flag: 'all', filters: {}, pinned: null, preview: null, sheetKey: null };
     const FX_MARK = '<!--fx-->';
 
     const lang = () => (state.language === 'auto' ? state.detected : state.language);
@@ -90,6 +90,8 @@
     const titleCase = raw => String(raw).toLowerCase().split(/[_\s]+/).filter(Boolean)
         .map(word => word[0].toUpperCase() + word.slice(1)).join(' ');
     const flagColor = flag => FLAG_COLORS[flag] || 'transparent';
+    const poolsOf = item => (item.pools || []).map(pool => (typeof pool === 'string' ? pool : Object.keys(pool).find(k => k.startsWith('ROOM_')))).filter(Boolean);
+    const poolName = pool => (POOL_NAMES[pool] || [])[lang() === 'kr' ? 0 : 1] || titleCase(pool.replace(/^ROOM_/, ''));
     // A missing sprite (work-in-progress items have none yet) becomes the name's first letter.
     const sprite = (item, size) =>
         `<img class="sprite${item.spriteFrame ? ' sprite-strip' : ''}" src="${escapeHtml(item.gfx || `resources/gfx/items/collectibles/${item.key.toLowerCase()}.png`)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" data-initial="${escapeHtml(Array.from(itemName(item))[0] || '?')}">`;
@@ -145,7 +147,31 @@
         return normalizeSearch(haystack).includes(query);
     }
     const matchesFlag = item => state.flag === 'all' || item.flag === state.flag;
-    const isVisible = item => matchesQuery(item) && matchesFlag(item);
+
+    // The filter button opens extra conditions. Values chosen in one group widen the
+    // match (any of them), except groups marked `every`; groups narrow it (all of them).
+    const FILTERS = [
+        { id: 'kind', text: 'filterKind', values: ['passive', 'active', 'familiar', 'trinket', 'pocket'],
+            label: value => t(value === 'pocket' ? 'groupPockets' : value),
+            test: (item, value) => (isPocket(item) ? 'pocket' : item.type) === value },
+        { id: 'quality', text: 'filterQuality', values: ['0', '1', '2', '3', '4'],
+            label: value => `★${value}`, test: (item, value) => typeof item.quality === 'number' && String(item.quality) === value },
+        { id: 'pool', text: 'pools', values: Object.keys(POOL_NAMES), label: poolName, test: (item, value) => poolsOf(item).includes(value) },
+        { id: 'stacking', text: 'stacking', values: ['stacks', 'noStack'], label: value => t(value),
+            test: (item, value) => typeof item.stackable === 'boolean' && item.stackable === (value === 'stacks') },
+        { id: 'feature', text: 'filterFeature', every: true, values: ['fx', 'synergies', 'evolution'], label: value => t(`feature_${value}`),
+            test: (item, value) => (value === 'fx' ? Boolean(item.fx)
+                : value === 'synergies' ? Object.keys(item.synergies || {}).length > 0
+                    : Boolean((item.evolutions || []).length || EVOLUTION_SOURCES[item.key])) }
+    ];
+    const chosenFilters = group => state.filters[group.id] || [];
+    const activeFilterCount = () => FILTERS.reduce((n, group) => n + chosenFilters(group).length, 0);
+    const matchesFilters = item => FILTERS.every(group => {
+        const chosen = chosenFilters(group);
+        if (!chosen.length) return true;
+        return group.every ? chosen.every(value => group.test(item, value)) : chosen.some(value => group.test(item, value));
+    });
+    const isVisible = item => matchesQuery(item) && matchesFlag(item) && matchesFilters(item);
 
     // ---------- storage ----------
     function readStoredLanguage() {
@@ -178,6 +204,37 @@
         ).join('');
     }
 
+    // Each option shows how many items it covers on its own; options no item has are left out.
+    function renderFilterPanel() {
+        const counted = ITEMS.filter(item => !isWip(item));
+        document.getElementById('filterPanel').innerHTML = FILTERS.map(group => {
+            const chips = group.values.map(value => ({ value, count: counted.filter(item => group.test(item, value)).length }))
+                .filter(option => option.count > 0)
+                .map(({ value, count }) => `<button type="button" class="chip" data-filter="${group.id}" data-value="${escapeHtml(value)}" aria-pressed="${chosenFilters(group).includes(value)}">${escapeHtml(group.label(value))}<span class="chip-count">${count}</span></button>`)
+                .join('');
+            if (!chips) return '';
+            return `<fieldset class="filter-group"><legend>${escapeHtml(t(group.text))}${group.every ? ` <small>${escapeHtml(t('filterEvery'))}</small>` : ''}</legend><div class="filter-chips">${chips}</div></fieldset>`;
+        }).join('') + `<div class="filter-actions"><button type="button" class="filter-reset" data-filter-reset>${escapeHtml(t('filterReset'))}</button></div>`;
+        updateFilterToggle();
+    }
+
+    function updateFilterToggle() {
+        const toggle = document.getElementById('filterToggle');
+        const count = activeFilterCount();
+        const badge = document.getElementById('filterBadge');
+        badge.hidden = count === 0;
+        badge.textContent = String(count);
+        toggle.classList.toggle('active', count > 0);
+        const label = count ? `${t('filters')} (${count})` : t('filters');
+        toggle.setAttribute('aria-label', label);
+        toggle.title = label;
+    }
+
+    function setFilterPanelOpen(open) {
+        document.getElementById('filterPanel').hidden = !open;
+        document.getElementById('filterToggle').setAttribute('aria-expanded', String(open));
+    }
+
     function renderGroups() {
         const html = GROUPS.map(group => {
             const list = ITEMS.filter(group.test);
@@ -203,7 +260,7 @@
             tile.classList.toggle('dim', !show);
             if (show && !isWip(item)) visible += 1;
         });
-        const filtering = state.query.trim() || state.flag !== 'all';
+        const filtering = state.query.trim() || state.flag !== 'all' || activeFilterCount() > 0;
         document.getElementById('resultCount').textContent = filtering
             ? t('matchCount', { n: visible, total: counted.length })
             : t('itemCount', { n: counted.length });
@@ -297,9 +354,10 @@
                 <div class="syn-list">${synergyRows(item)}<p class="path-note" data-synergy-empty hidden>${escapeHtml(t('noSynergyMatch'))}</p></div></section>`;
         }
 
-        const pools = (item.pools || []).map(pool => (typeof pool === 'string' ? pool : Object.keys(pool).find(k => k.startsWith('ROOM_')))).filter(Boolean);
+        const pools = poolsOf(item);
         const facts = [];
-        if (pools.length) facts.push([t('pools'), `<div class="mini-chips">${pools.map(pool => `<span class="mini-chip">${escapeHtml((POOL_NAMES[pool] || [titleCase(pool.replace(/^ROOM_/, ''))])[lang() === 'kr' ? 0 : 1] || titleCase(pool.replace(/^ROOM_/, '')))}</span>`).join('')}</div>`]);
+        if (pools.length) facts.push([t('pools'), `<div class="mini-chips">${pools.map(pool => `<span class="mini-chip">${escapeHtml(poolName(pool))}</span>`).join('')}</div>`]);
+        if (item.type !== 'trinket' && typeof item.stackable === 'boolean') facts.push([t('stacking'), escapeHtml(t(item.stackable ? 'stacks' : 'noStack'))]);
         if (item.tags) facts.push([t('tags'), `<div class="mini-chips">${item.tags.split(/\s+/).filter(Boolean).map(tag => `<span class="mini-chip">${escapeHtml(tag)}</span>`).join('')}</div>`]);
         if (item.shopprice) facts.push([t('shopPrice'), `${item.shopprice}¢`]);
         if (item.devilprice) facts.push([t('devilPrice'), '♥'.repeat(Math.max(1, item.devilprice))]);
@@ -544,6 +602,32 @@
             updateFilters();
         });
 
+        const filterToggle = document.getElementById('filterToggle');
+        const filterPanel = document.getElementById('filterPanel');
+        filterToggle.addEventListener('click', () => setFilterPanelOpen(filterPanel.hidden));
+        // Chips change in place, so the pressed button keeps its focus.
+        filterPanel.addEventListener('click', event => {
+            if (event.target.closest('[data-filter-reset]')) {
+                state.filters = {};
+                filterPanel.querySelectorAll('[data-filter]').forEach(chip => chip.setAttribute('aria-pressed', 'false'));
+            } else {
+                const chip = event.target.closest('[data-filter]');
+                if (!chip) return;
+                const chosen = new Set(state.filters[chip.dataset.filter] || []);
+                if (chosen.has(chip.dataset.value)) chosen.delete(chip.dataset.value);
+                else chosen.add(chip.dataset.value);
+                state.filters[chip.dataset.filter] = [...chosen];
+                chip.setAttribute('aria-pressed', String(chosen.has(chip.dataset.value)));
+            }
+            updateFilterToggle();
+            updateFilters();
+        });
+        filterPanel.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            setFilterPanelOpen(false);
+            filterToggle.focus();
+        });
+
         document.getElementById('languageSelect').addEventListener('change', event => {
             state.language = event.target.value;
             if (state.language === 'auto') state.detected = detectAndSetLanguage();
@@ -582,6 +666,7 @@
     function rerenderAll() {
         applyTexts();
         renderFlags();
+        renderFilterPanel();
         renderGroups();
         const panel = document.getElementById('detailPanel');
         panel.dataset.stale = '1';

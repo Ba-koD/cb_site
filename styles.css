@@ -160,6 +160,42 @@ img.sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
 .chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
 .count { color: var(--faint); font-size: 13px; margin-left: auto; white-space: nowrap; }
 
+/* filter button and its panel */
+.filter-toggle {
+    position: relative; flex: none; align-self: stretch; width: 42px; min-height: 38px;
+    display: grid; place-items: center; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px; color: var(--muted);
+}
+.filter-toggle svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.filter-toggle:hover, .filter-toggle[aria-expanded="true"] { color: var(--text); border-color: var(--line-strong); background: var(--surface-2); }
+.filter-toggle.active { color: var(--accent); border-color: var(--accent); }
+.filter-toggle.active svg { fill: currentColor; fill-opacity: .25; }
+.filter-badge {
+    position: absolute; top: -7px; right: -7px; min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: 999px; background: var(--accent); color: var(--accent-ink);
+    font-size: 11px; font-weight: 800; line-height: 18px; text-align: center;
+}
+.filter-panel {
+    flex: 1 1 100%; display: grid; gap: 12px; padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    max-height: min(55vh, 440px); overflow: auto; overscroll-behavior: contain;
+}
+.filter-panel[hidden] { display: none; }
+.filter-group { border: 0; min-width: 0; }
+.filter-group legend { font-size: 12.5px; font-weight: 700; color: var(--muted); margin-bottom: 7px; }
+.filter-group legend small { font-weight: 500; color: var(--faint); }
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter-panel .chip { background: var(--bg-2); }
+.filter-panel .chip[aria-pressed="true"] { background: var(--text); }
+.chip-count { font-size: 11.5px; color: var(--faint); }
+.chip[aria-pressed="true"] .chip-count { color: inherit; opacity: .65; }
+.filter-actions { display: flex; justify-content: flex-end; }
+.filter-reset {
+    border: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 600;
+    padding: 4px 6px; border-radius: 7px; cursor: pointer;
+}
+.filter-reset:hover { background: var(--surface-2); }
+
 /* ---------- icon groups ---------- */
 .group + .group { margin-top: 22px; }
 .group-title { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 10px; }
