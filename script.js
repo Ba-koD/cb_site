@@ -95,6 +95,9 @@
     // A trinket marked "golden" changes only with a golden copy or Mom's Box.
     const stackingOf = item => (item.stackable === true ? 'stacks' : item.stackable === false ? 'noStack'
         : item.stackable === 'golden' ? 'goldenOnly' : null);
+    // Every upgrade plays the default animation, so only an item's own presentation
+    // counts; a pending concept still plays the default in game.
+    const hasOwnFx = item => item.fx === 'applied';
     // A missing sprite (work-in-progress items have none yet) becomes the name's first letter.
     const sprite = (item, size) =>
         `<img class="sprite${item.spriteFrame ? ' sprite-strip' : ''}" src="${escapeHtml(item.gfx || `resources/gfx/items/collectibles/${item.key.toLowerCase()}.png`)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" data-initial="${escapeHtml(Array.from(itemName(item))[0] || '?')}">`;
@@ -163,7 +166,7 @@
         { id: 'stacking', text: 'stacking', values: ['stacks', 'goldenOnly', 'noStack'], label: value => t(value),
             test: (item, value) => stackingOf(item) === value },
         { id: 'feature', text: 'filterFeature', every: true, values: ['fx', 'synergies', 'evolution'], label: value => t(`feature_${value}`),
-            test: (item, value) => (value === 'fx' ? Boolean(item.fx)
+            test: (item, value) => (value === 'fx' ? hasOwnFx(item)
                 : value === 'synergies' ? Object.keys(item.synergies || {}).length > 0
                     : Boolean((item.evolutions || []).length || EVOLUTION_SOURCES[item.key])) }
     ];
@@ -392,17 +395,17 @@
         return (container.fxParts = { top, fx, bottom });
     }
 
-    // Shows the item's presentation in the view's player, creating it the first time.
+    // Shows the item's own presentation in the view's player, creating it the first time.
     function showFx(fx, item) {
         let frame = fx.querySelector('iframe');
-        if (!item.fx) {
+        if (!hasOwnFx(item)) {
             fx.hidden = true;
             if (frame) stopFrame(frame);
             return;
         }
         fx.hidden = false;
-        fx.querySelector('h3').textContent = t('tabFx');
-        fx.querySelector('.fx-state').textContent = t(item.fx === 'applied' ? 'fxApplied' : 'fxPending');
+        fx.querySelector('h3').textContent = t('feature_fx');
+        fx.querySelector('.fx-state').textContent = t('fxApplied');
         if (!frame) {
             frame = document.createElement('iframe');
             frame.className = 'fx-mini-frame';

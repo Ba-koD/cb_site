@@ -197,7 +197,7 @@ const fs = require('node:fs');
     assert.equal((await visibleKeys()).length, await page.evaluate(() => Object.values(items).length));
     await chip('feature', 'fx').click();
     await chip('feature', 'synergies').click();
-    assert.deepEqual(await visibleKeys(), await expected("Boolean(item.fx) && Object.keys(item.synergies || {}).length > 0"));
+    assert.deepEqual(await visibleKeys(), await expected("item.fx === 'applied' && Object.keys(item.synergies || {}).length > 0"));
     await chip('feature', 'fx').click();
     await chip('feature', 'synergies').click();
     await chip('pool', 'ROOM_ANGEL').click();
@@ -208,6 +208,13 @@ const fs = require('node:fs');
     await page.locator('#filterPanel').press('Escape');
     assert.equal(await page.locator('#filterPanel').isHidden(), true, 'Escape closes the panel');
     console.log('PASS filter panel: OR within a group, AND across groups and features, badge, reset, Escape');
+
+    // Every item plays the default upgrade animation; only its own presentation counts.
+    await page.evaluate(() => window.ConchBlessing.select('LIVE_EYE'));
+    assert.equal(await page.locator('#detailPanel .fx-section').isHidden(), true, 'a pending concept is not an own presentation');
+    await page.evaluate(() => window.ConchBlessing.select('ANGELS_CROWN'));
+    assert.equal(await page.locator('#detailPanel .fx-section h3').textContent(), '전용 강화 연출');
+    console.log('PASS own upgrade effect: shown for ANGELS_CROWN, hidden for the pending LIVE_EYE');
 
     await page.locator('#searchInput').fill('');
     await page.evaluate(() => window.ConchBlessing.select('KRONOS'));
