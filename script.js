@@ -92,8 +92,10 @@
     const flagColor = flag => FLAG_COLORS[flag] || 'transparent';
     const poolsOf = item => (item.pools || []).map(pool => (typeof pool === 'string' ? pool : Object.keys(pool).find(k => k.startsWith('ROOM_')))).filter(Boolean);
     const poolName = pool => (POOL_NAMES[pool] || [])[lang() === 'kr' ? 0 : 1] || titleCase(pool.replace(/^ROOM_/, ''));
-    // A trinket stacks when golden copies, Mom's Box or more copies strengthen it.
+    // Stacking counts more copies only. A golden copy or Mom's Box is a separate
+    // fact for trinkets: a trinket may stack and ignore them, or the reverse.
     const stackingOf = item => (item.stackable === true ? 'stacks' : item.stackable === false ? 'noStack' : null);
+    const goldenOf = item => (item.type !== 'trinket' ? null : Object.keys(item.golden || {}).length ? 'goldenYes' : 'goldenNo');
     // Every upgrade plays the default animation, so only an item's own presentation
     // counts; a pending concept still plays the default in game.
     const hasOwnFx = item => item.fx === 'applied';
@@ -164,6 +166,8 @@
         { id: 'pool', text: 'pools', values: Object.keys(POOL_NAMES), label: poolName, test: (item, value) => poolsOf(item).includes(value) },
         { id: 'stacking', text: 'stacking', values: ['stacks', 'noStack'], label: value => t(value),
             test: (item, value) => stackingOf(item) === value },
+        { id: 'golden', text: 'goldenBox', values: ['goldenYes', 'goldenNo'], label: value => t(value),
+            test: (item, value) => goldenOf(item) === value },
         { id: 'feature', text: 'filterFeature', every: true, values: ['fx', 'synergies', 'evolution'], label: value => t(`feature_${value}`),
             test: (item, value) => (value === 'fx' ? hasOwnFx(item)
                 : value === 'synergies' ? Object.keys(item.synergies || {}).length > 0
@@ -333,6 +337,18 @@
         const lines = effects(item);
         const effectsHtml = lines.length
             ? `<section class="d-section"><h3>${escapeHtml(t('effects'))}</h3><ul class="d-effects">${lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></section>` : '';
+        // Golden and Mom's Box usually do the same; then they share one row.
+        const golden = item.golden && (item.golden[lang()] || item.golden.en);
+        let goldenHtml = '';
+        if (golden) {
+            const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+            const rows = same(golden.golden, golden.momsBox)
+                ? [['golden_either', golden.golden], ['golden_both', golden.both]]
+                : [['golden_golden', golden.golden], ['golden_momsBox', golden.momsBox], ['golden_both', golden.both]];
+            goldenHtml = `<section class="d-section d-golden"><h3>${escapeHtml(t('goldenEffects'))}</h3><dl class="facts">${rows
+                .filter(([, lines]) => lines && lines.length)
+                .map(([label, lines]) => `<dt>${escapeHtml(t(label))}</dt><dd>${lines.map(escapeHtml).join('<br>')}</dd>`).join('')}</dl></section>`;
+        }
         const obtainHtml = isPocket(item)
             ? `<section class="d-section d-obtain"><h3>${escapeHtml(t('obtain'))}</h3><p class="path-note">${escapeHtml(t('pocketSource_' + item.type))}</p></section>` : '';
 
@@ -363,6 +379,7 @@
         const facts = [];
         if (pools.length) facts.push([t('pools'), `<div class="mini-chips">${pools.map(pool => `<span class="mini-chip">${escapeHtml(poolName(pool))}</span>`).join('')}</div>`]);
         if (stackingOf(item)) facts.push([t('stacking'), escapeHtml(t(stackingOf(item)))]);
+        if (goldenOf(item)) facts.push([t('goldenBox'), escapeHtml(t(goldenOf(item)))]);
         if (item.tags) facts.push([t('tags'), `<div class="mini-chips">${item.tags.split(/\s+/).filter(Boolean).map(tag => `<span class="mini-chip">${escapeHtml(tag)}</span>`).join('')}</div>`]);
         if (item.shopprice) facts.push([t('shopPrice'), `${item.shopprice}¢`]);
         if (item.devilprice) facts.push([t('devilPrice'), '♥'.repeat(Math.max(1, item.devilprice))]);
@@ -372,7 +389,7 @@
 
         return `${head}
             ${description ? `<p class="d-quote">“${escapeHtml(description)}”</p>` : ''}
-            ${effectsHtml}${obtainHtml}${upgradeHtml}${FX_MARK}${childrenHtml}${evolutionHtml}${factsHtml}
+            ${effectsHtml}${goldenHtml}${obtainHtml}${upgradeHtml}${FX_MARK}${childrenHtml}${evolutionHtml}${factsHtml}
             <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>${synergyHtml}`;
     }
 

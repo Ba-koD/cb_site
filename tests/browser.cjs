@@ -160,16 +160,32 @@ const fs = require('node:fs');
     await page.locator('#searchInput').fill('');
     console.log('PASS rune group, added-not-upgraded note, effects, icon and search');
 
-    // Stacking: every collectible and trinket says whether copies stack; runes do not.
-    const stacking = await page.evaluate(() => Object.fromEntries(
-        ['DRAGON', 'TIME_MONEY', 'KRONOS', 'POWER_TRAINING', 'TIME_POWER', 'ATROPOS', 'ANGELS_CROWN', 'THURISAZ'].map(key => {
-            window.ConchBlessing.select(key);
-            const label = [...document.querySelectorAll('#detailPanel .facts dt')].find(dt => dt.textContent === '중첩');
-            return [key, label ? label.nextElementSibling.textContent : null];
-        })));
-    assert.deepEqual(stacking, { DRAGON: '중첩 가능', TIME_MONEY: '중첩 가능', KRONOS: '중첩 불가', POWER_TRAINING: '중첩 불가',
-        TIME_POWER: '중첩 가능', ATROPOS: '중첩 불가', ANGELS_CROWN: '중첩 가능', THURISAZ: null });
-    console.log('PASS stacking fact on collectibles and trinkets (golden/Mom\'s Box count as stacking), none on runes');
+    // Stacking (more copies) and golden/Mom's Box are separate facts; runes have neither,
+    // and only trinkets have the golden one.
+    const factOf = (label) => page.evaluate(([label, keys]) => Object.fromEntries(keys.map(key => {
+        window.ConchBlessing.select(key);
+        const dt = [...document.querySelectorAll('#detailPanel .facts dt')].find(node => node.textContent === label);
+        return [key, dt ? dt.nextElementSibling.textContent : null];
+    })), [label, ['DRAGON', 'TIME_MONEY', 'KRONOS', 'POWER_TRAINING', 'TIME_POWER', 'ATROPOS', 'ANGELS_CROWN', 'THURISAZ']]);
+    assert.deepEqual(await factOf('중첩'), { DRAGON: '중첩 가능', TIME_MONEY: '중첩 가능', KRONOS: '중첩 불가', POWER_TRAINING: '중첩 불가',
+        TIME_POWER: '중첩 가능', ATROPOS: '중첩 불가', ANGELS_CROWN: '중첩 불가', THURISAZ: null });
+    assert.deepEqual(await factOf('황금·엄마의 상자'), { DRAGON: null, TIME_MONEY: null, KRONOS: null, POWER_TRAINING: null,
+        TIME_POWER: '효과 있음', ATROPOS: '효과 없음', ANGELS_CROWN: '효과 있음', THURISAZ: null });
+    console.log('PASS stacking and golden/Mom\'s Box are separate facts (golden on trinkets only), none on runes');
+
+    // The golden/Mom's Box section: one row when both do the same, then both together.
+    const goldenRows = key => page.evaluate(key => {
+        window.ConchBlessing.select(key);
+        return [...document.querySelectorAll('#detailPanel .d-golden dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]);
+    }, key);
+    assert.deepEqual(await goldenRows('ANGELS_CROWN'), [
+        ['황금 또는 엄마의 상자', '25% 확률로 축복받은 보물방이 되어 천사방 아이템 1개와 영원한 하트가 추가됩니다.'],
+        ['황금 + 엄마의 상자', '33% 확률로 축복받은 보물방이 되어 천사방 아이템 1개와 영원한 하트가 추가됩니다.']]);
+    assert.deepEqual(await goldenRows('TIME_POWER'), [
+        ['황금 또는 엄마의 상자', '소지 중 초당 공격력이 0.012 증가합니다.'],
+        ['황금 + 엄마의 상자', '소지 중 초당 공격력이 0.018 증가합니다.']]);
+    assert.deepEqual(await goldenRows('ATROPOS'), []);
+    console.log('PASS golden/Mom\'s Box effect section from the EID specials');
 
     // A quality icon in the EID stands in for its grade, so the effect text keeps the digit.
     await page.evaluate(() => window.ConchBlessing.select('CONCH_PEARL'));
@@ -201,6 +217,17 @@ const fs = require('node:fs');
     await chip('stacking', 'stacks').click();
     await chip('stacking', 'noStack').click();
     await chip('kind', 'trinket').click();
+    assert.equal(await page.locator('#filterBadge').textContent(), '3');
+    await page.locator('#filterPanel [data-filter-reset]').click();
+    await chip('golden', 'goldenNo').click();
+    assert.deepEqual(await visibleKeys(), await expected("item.type === 'trinket' && Object.keys(item.golden || {}).length === 0"));
+    await chip('stacking', 'noStack').click();
+    await chip('golden', 'goldenNo').click();
+    await chip('golden', 'goldenYes').click();
+    assert.deepEqual(await visibleKeys(), ['ANGELS_CROWN'], 'golden/Mom\'s Box without stacking');
+    await chip('golden', 'goldenYes').click();
+    await chip('kind', 'familiar').click();
+    await chip('kind', 'active').click();
     assert.equal(await page.locator('#filterBadge').textContent(), '3');
     await page.locator('#filterPanel [data-filter-reset]').click();
     assert.equal(await page.locator('#filterBadge').isHidden(), true, 'badge stays after reset');

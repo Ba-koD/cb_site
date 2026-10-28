@@ -10,6 +10,7 @@ import os
 import sys
 import glob
 import json
+from decimal import Decimal
 
 # conch_blessing keeps every player-facing string in scripts/locale/<lang>.lua;
 # ItemData in conch_blessing_items.lua holds only data, and each synergy entry's
@@ -157,15 +158,55 @@ def parse_synergy_line_keys(synergies_data):
         lines.append((site_key, 'trinket' if is_trinket else 'collectible', line_key))
     return lines
 
+# A golden trinket counts twice in the engine's trinket multiplier and Mom's Box
+# adds one, so the scaled numbers are x2 for either and x3 for both.
+GOLDEN_STATES = (('golden', 2), ('momsBox', 2), ('both', 3))
+# A whole number in the text; a sentence's full stop may follow it ("by 5.").
+NUMBER_TOKEN = re.compile(r'(?<!\d)(?<!\d\.)\d+(?:\.\d+)?(?!\.?\d)')
+
+def scale_numbers(line, numbers, factor):
+    """The line with every listed number multiplied, keeping each one's decimals."""
+    def scaled(match):
+        token = match.group(0)
+        if token not in numbers:
+            return token
+        places = len(token.split('.')[1]) if '.' in token else 0
+        return f"{Decimal(token) * factor:.{places}f}"
+    return NUMBER_TOKEN.sub(scaled, line)
+
+def golden_effects(eids, numbers, appends):
+    """lang -> {golden, momsBox, both: [lines]}: a trinket's own golden/Mom's Box
+    lines (EID `specials.append`, in that order) or its effect lines with the
+    `specials.normal` numbers scaled. Empty when neither changes the trinket."""
+    effects = {}
+    for lang in set(eids) | set(appends):
+        lines = appends.get(lang)
+        if lines:
+            effects[lang] = {state: [lines[min(i, len(lines) - 1)]] for i, (state, _) in enumerate(GOLDEN_STATES)}
+            continue
+        states = {}
+        for state, factor in GOLDEN_STATES:
+            changed = [new for line in eids.get(lang, [])
+                       if (new := scale_numbers(line, numbers, factor)) != line]
+            if changed:
+                states[state] = changed
+        if states:
+            effects[lang] = states
+    return effects
+
 def apply_locale(items, tables):
     """Fill names/descriptions/eids/synergies from the locale tables."""
     for key, info in items.items():
         working_now = len(info) == 3 and 'names' in info and 'descriptions' in info and 'eids' in info
         names, descriptions, eids, synergies, synergy_types, evolutions = {}, {}, {}, {}, {}, {}
+        golden_appends = {}
         for lang, table in tables.items():
             entry = (table.get('items') or {}).get(key)
             if not isinstance(entry, dict):
                 continue
+            special = entry.get('specials')
+            if isinstance(special, dict) and isinstance(special.get('append'), list):
+                golden_appends[lang] = [clean_locale_line(line) for line in special['append'] if isinstance(line, str)]
             if isinstance(entry.get('name'), str):
                 names[lang] = entry['name']
             if isinstance(entry.get('description'), str):
@@ -188,10 +229,13 @@ def apply_locale(items, tables):
                     synergies.setdefault(site_key, {})[lang] = text
                     synergy_types[site_key] = target_type
         info.pop('synergy_lines', None)
+        golden_numbers = info.pop('golden_numbers', [])
         if names:
             info['names'] = names
         if working_now:
             continue
+        if info.get('type') == 'trinket':
+            info['golden'] = golden_effects(eids, golden_numbers, golden_appends)
         if descriptions:
             info['descriptions'] = descriptions
         if eids:
@@ -496,10 +540,16 @@ def parse_lua_file(file_path):
             print(f"  Hidden: {item_info['hidden']}")
 
         # extract stackable: whether more copies change the item's effect (the
-        # registry marks only the ones that do; actives never stack). A trinket
-        # stacks when golden copies, Mom's Box or more copies strengthen it.
+        # registry marks only the ones that do; actives never stack). For a trinket
+        # this counts more copies only; golden copies and Mom's Box are their own fact.
         stackable_match = re.search(r'\bstackable\s*=\s*(true|false)', item_data)
         item_info['stackable'] = bool(stackable_match) and stackable_match.group(1) == 'true'
+
+        # extract specials: the numbers a golden copy or Mom's Box scales in the EID
+        # text (`specials = { normal = 0.006 }` or `{ normal = {4, 2.0} }`).
+        specials_match = re.search(r'\bspecials\s*=\s*\{\s*normal\s*=\s*(\{[^}]*\}|[\d.]+)\s*\}', item_data)
+        if specials_match:
+            item_info['golden_numbers'] = re.findall(r'\d+(?:\.\d+)?', specials_match.group(1))
         
         # extract shopprice
         shopprice_match = re.search(r'shopprice\s*=\s*(\d+)', item_data)
@@ -934,6 +984,8 @@ const items = {
                 js_content += f",\n        quality: {item_info.get('quality', 3)}"
                 js_content += f",\n        pools: {json.dumps(item_info.get('pools', []))}"
             js_content += f",\n        stackable: {json.dumps(item_info.get('stackable', False))}"
+            if item_type == 'trinket':
+                js_content += f",\n        golden: {json.dumps(item_info.get('golden', {}), ensure_ascii=False)}"
             
             # 일반 아이템에만 다국어 정보 추가
             if 'names' in item_info:
