@@ -160,16 +160,16 @@ const fs = require('node:fs');
     await page.locator('#searchInput').fill('');
     console.log('PASS rune group, added-not-upgraded note, effects, icon and search');
 
-    // Stacking: every collectible says whether copies stack; trinkets and runes do not.
+    // Stacking: every collectible and trinket says whether copies stack; runes do not.
     const stacking = await page.evaluate(() => Object.fromEntries(
-        ['DRAGON', 'TIME_MONEY', 'KRONOS', 'POWER_TRAINING', 'ATROPOS', 'THURISAZ'].map(key => {
+        ['DRAGON', 'TIME_MONEY', 'KRONOS', 'POWER_TRAINING', 'TIME_POWER', 'ATROPOS', 'ANGELS_CROWN', 'THURISAZ'].map(key => {
             window.ConchBlessing.select(key);
             const label = [...document.querySelectorAll('#detailPanel .facts dt')].find(dt => dt.textContent === '중첩');
             return [key, label ? label.nextElementSibling.textContent : null];
         })));
-    assert.deepEqual(stacking, { DRAGON: '중첩 가능', TIME_MONEY: '중첩 가능', KRONOS: '중첩 불가',
-        POWER_TRAINING: '중첩 불가', ATROPOS: null, THURISAZ: null });
-    console.log('PASS stacking fact on passives, familiars and actives, none on trinkets or runes');
+    assert.deepEqual(stacking, { DRAGON: '중첩 가능', TIME_MONEY: '중첩 가능', KRONOS: '중첩 불가', POWER_TRAINING: '중첩 불가',
+        TIME_POWER: '중첩 가능', ATROPOS: '중첩 불가', ANGELS_CROWN: '황금·엄마의 상자만', THURISAZ: null });
+    console.log('PASS stacking fact on collectibles and trinkets (golden-only included), none on runes');
 
     // Filter button: values in a group widen, groups narrow, features need all chosen, reset clears.
     const visibleKeys = () => page.evaluate(() => [...document.querySelectorAll('.tile:not(.dim)')].map(tile => tile.dataset.key).sort());
@@ -186,6 +186,11 @@ const fs = require('node:fs');
     assert.deepEqual(await visibleKeys(), await expected("item.type === 'familiar' || item.type === 'active'"));
     await chip('stacking', 'noStack').click();
     assert.deepEqual(await visibleKeys(), await expected("(item.type === 'familiar' || item.type === 'active') && item.stackable === false"));
+    await chip('stacking', 'goldenOnly').click();
+    await chip('kind', 'trinket').click();
+    assert.deepEqual(await visibleKeys(), await expected("['familiar', 'active', 'trinket'].includes(item.type) && (item.stackable === false || item.stackable === 'golden')"));
+    await chip('stacking', 'goldenOnly').click();
+    await chip('kind', 'trinket').click();
     assert.equal(await page.locator('#filterBadge').textContent(), '3');
     await page.locator('#filterPanel [data-filter-reset]').click();
     assert.equal(await page.locator('#filterBadge').isHidden(), true, 'badge stays after reset');

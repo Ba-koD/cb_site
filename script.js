@@ -92,6 +92,9 @@
     const flagColor = flag => FLAG_COLORS[flag] || 'transparent';
     const poolsOf = item => (item.pools || []).map(pool => (typeof pool === 'string' ? pool : Object.keys(pool).find(k => k.startsWith('ROOM_')))).filter(Boolean);
     const poolName = pool => (POOL_NAMES[pool] || [])[lang() === 'kr' ? 0 : 1] || titleCase(pool.replace(/^ROOM_/, ''));
+    // A trinket marked "golden" changes only with a golden copy or Mom's Box.
+    const stackingOf = item => (item.stackable === true ? 'stacks' : item.stackable === false ? 'noStack'
+        : item.stackable === 'golden' ? 'goldenOnly' : null);
     // A missing sprite (work-in-progress items have none yet) becomes the name's first letter.
     const sprite = (item, size) =>
         `<img class="sprite${item.spriteFrame ? ' sprite-strip' : ''}" src="${escapeHtml(item.gfx || `resources/gfx/items/collectibles/${item.key.toLowerCase()}.png`)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" data-initial="${escapeHtml(Array.from(itemName(item))[0] || '?')}">`;
@@ -157,8 +160,8 @@
         { id: 'quality', text: 'filterQuality', values: ['0', '1', '2', '3', '4'],
             label: value => `★${value}`, test: (item, value) => typeof item.quality === 'number' && String(item.quality) === value },
         { id: 'pool', text: 'pools', values: Object.keys(POOL_NAMES), label: poolName, test: (item, value) => poolsOf(item).includes(value) },
-        { id: 'stacking', text: 'stacking', values: ['stacks', 'noStack'], label: value => t(value),
-            test: (item, value) => typeof item.stackable === 'boolean' && item.stackable === (value === 'stacks') },
+        { id: 'stacking', text: 'stacking', values: ['stacks', 'goldenOnly', 'noStack'], label: value => t(value),
+            test: (item, value) => stackingOf(item) === value },
         { id: 'feature', text: 'filterFeature', every: true, values: ['fx', 'synergies', 'evolution'], label: value => t(`feature_${value}`),
             test: (item, value) => (value === 'fx' ? Boolean(item.fx)
                 : value === 'synergies' ? Object.keys(item.synergies || {}).length > 0
@@ -357,7 +360,7 @@
         const pools = poolsOf(item);
         const facts = [];
         if (pools.length) facts.push([t('pools'), `<div class="mini-chips">${pools.map(pool => `<span class="mini-chip">${escapeHtml(poolName(pool))}</span>`).join('')}</div>`]);
-        if (item.type !== 'trinket' && typeof item.stackable === 'boolean') facts.push([t('stacking'), escapeHtml(t(item.stackable ? 'stacks' : 'noStack'))]);
+        if (stackingOf(item)) facts.push([t('stacking'), escapeHtml(t(stackingOf(item)))]);
         if (item.tags) facts.push([t('tags'), `<div class="mini-chips">${item.tags.split(/\s+/).filter(Boolean).map(tag => `<span class="mini-chip">${escapeHtml(tag)}</span>`).join('')}</div>`]);
         if (item.shopprice) facts.push([t('shopPrice'), `${item.shopprice}¢`]);
         if (item.devilprice) facts.push([t('devilPrice'), '♥'.repeat(Math.max(1, item.devilprice))]);

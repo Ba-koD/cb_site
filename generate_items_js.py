@@ -494,9 +494,11 @@ def parse_lua_file(file_path):
             print(f"  Hidden: {item_info['hidden']}")
 
         # extract stackable: whether more copies change the item's effect (the
-        # registry marks only the ones that do; actives never stack)
-        stackable_match = re.search(r'\bstackable\s*=\s*(true|false)', item_data)
-        item_info['stackable'] = bool(stackable_match and stackable_match.group(1) == 'true')
+        # registry marks only the ones that do; actives never stack). A trinket
+        # marked "golden" changes only with a golden copy or Mom's Box.
+        stackable_match = re.search(r'\bstackable\s*=\s*(true|false|"golden")', item_data)
+        stackable_value = stackable_match.group(1) if stackable_match else 'false'
+        item_info['stackable'] = 'golden' if stackable_value == '"golden"' else stackable_value == 'true'
         
         # extract shopprice
         shopprice_match = re.search(r'shopprice\s*=\s*(\d+)', item_data)
@@ -930,7 +932,7 @@ const items = {
                 # non-trinket: include quality and pools
                 js_content += f",\n        quality: {item_info.get('quality', 3)}"
                 js_content += f",\n        pools: {json.dumps(item_info.get('pools', []))}"
-                js_content += f",\n        stackable: {str(item_info.get('stackable', False)).lower()}"
+            js_content += f",\n        stackable: {json.dumps(item_info.get('stackable', False))}"
             
             # 일반 아이템에만 다국어 정보 추가
             if 'names' in item_info:
