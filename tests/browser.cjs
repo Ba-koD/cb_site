@@ -246,12 +246,17 @@ const fs = require('node:fs');
     assert.equal(await page.locator('#filterPanel').isHidden(), true, 'Escape closes the panel');
     console.log('PASS filter panel: OR within a group, AND across groups and features, badge, reset, Escape');
 
-    // Every item plays the default upgrade animation; only its own presentation counts.
+    // Details show what the game plays: an item's own presentation, else its flag's default.
     await page.evaluate(() => window.ConchBlessing.select('LIVE_EYE'));
-    assert.equal(await page.locator('#detailPanel .fx-section').isHidden(), true, 'a pending concept is not an own presentation');
+    assert.equal(await page.locator('#detailPanel .fx-section h3').textContent(), '기본 강화 연출');
+    assert.ok((await page.locator('#detailPanel .fx-mini-frame').getAttribute('src')).includes('ingame'),
+        'the player shows the in-game presentation, never a concept');
     await page.evaluate(() => window.ConchBlessing.select('ANGELS_CROWN'));
     assert.equal(await page.locator('#detailPanel .fx-section h3').textContent(), '전용 강화 연출');
-    console.log('PASS own upgrade effect: shown for ANGELS_CROWN, hidden for the pending LIVE_EYE');
+    await page.evaluate(() => window.ConchBlessing.select('RAT'));
+    assert.equal(await page.locator('#detailPanel .fx-section h3').textContent(), '기본 강화 연출');
+    assert.equal(await page.evaluate(() => items.THURISAZ.fx), undefined, 'cards and runes have no upgrade effect');
+    console.log('PASS upgrade effect: own for ANGELS_CROWN, default for LIVE_EYE and RAT, none for runes');
 
     await page.locator('#searchInput').fill('');
     await page.evaluate(() => window.ConchBlessing.select('KRONOS'));

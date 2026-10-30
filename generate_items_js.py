@@ -127,7 +127,9 @@ def load_pockets(tables):
     return pockets
 
 def apply_fx(items):
-    """Mark each item the preview player can show: 'applied' or 'pending'."""
+    """Mark what the game plays for each catalog item: its own presentation
+    ('applied') or its flag's default animation ('default'). The player opened with
+    ?ingame shows exactly that."""
     if not os.path.isfile(FX_CATALOG_PATH):
         return
     sys.path.insert(0, os.getcwd())
@@ -135,7 +137,7 @@ def apply_fx(items):
     for row in lua_data.load(FX_CATALOG_PATH):
         key = row.get('key') if isinstance(row, dict) else None
         if key in items and not items[key].get('pocket'):
-            items[key]['fx'] = 'applied' if row.get('effect') else 'pending'
+            items[key]['fx'] = 'applied' if row.get('effect') else 'default'
             print(f"  fx {key}: {items[key]['fx']}")
 
 def parse_synergy_line_keys(synergies_data):

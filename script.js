@@ -96,8 +96,8 @@
     // fact for trinkets: a trinket may stack and ignore them, or the reverse.
     const stackingOf = item => (item.stackable === true ? 'stacks' : item.stackable === false ? 'noStack' : null);
     const goldenOf = item => (item.type !== 'trinket' ? null : Object.keys(item.golden || {}).length ? 'goldenYes' : 'goldenNo');
-    // Every upgrade plays the default animation, so only an item's own presentation
-    // counts; a pending concept still plays the default in game.
+    // In game an item plays its own presentation if it has one, else its flag's
+    // default animation; only its own presentation counts for the filter.
     const hasOwnFx = item => item.fx === 'applied';
     // A missing sprite (work-in-progress items have none yet) becomes the name's first letter.
     const sprite = (item, size) =>
@@ -411,16 +411,17 @@
         return (container.fxParts = { top, fx, bottom });
     }
 
-    // Shows the item's own presentation in the view's player, creating it the first time.
+    // Shows what the game plays for the item (its own presentation or the default)
+    // in the view's player, creating it the first time.
     function showFx(fx, item) {
         let frame = fx.querySelector('iframe');
-        if (!hasOwnFx(item)) {
+        if (!item.fx) {
             fx.hidden = true;
             if (frame) stopFrame(frame);
             return;
         }
         fx.hidden = false;
-        fx.querySelector('h3').textContent = t('feature_fx');
+        fx.querySelector('h3').textContent = t(hasOwnFx(item) ? 'feature_fx' : 'fxDefault');
         fx.querySelector('.fx-state').textContent = t('fxApplied');
         if (!frame) {
             frame = document.createElement('iframe');
