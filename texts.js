@@ -3,6 +3,10 @@
 const texts = {
     en: {
         pageTitle: "Conch's Blessing - Item Codex",
+        // Search results and link previews (prerender.cjs).
+        siteName: "Conch's Blessing",
+        metaHome: "Item codex for Conch's Blessing, a mod for The Binding of Isaac: Repentance. Every item, trinket, card and rune with its effects, synergies and Magic Conch upgrade path, in English and Korean.",
+        metaItem: "{text} · {kind} item in Conch's Blessing, a Binding of Isaac mod",
         subtitle: "Item Codex",
         workshop: "Steam Workshop",
         languageLabel: "Language",
@@ -92,6 +96,10 @@ const texts = {
 
     kr: {
         pageTitle: "소라고둥의 축복 - 아이템 도감",
+        // 검색 결과와 링크 미리보기 (prerender.cjs).
+        siteName: "소라고둥의 축복",
+        metaHome: "아이작의 번제(The Binding of Isaac: Repentance) 모드 소라고둥의 축복(Conch's Blessing)의 아이템 도감. 모든 아이템·장신구·카드·룬의 효과, 시너지, 마법의 소라고둥 강화 경로를 한국어와 영어로 볼 수 있습니다.",
+        metaItem: "{text} · 아이작의 번제 모드 소라고둥의 축복 {kind} 아이템",
         subtitle: "아이템 도감",
         workshop: "스팀 창작마당",
         languageLabel: "언어",

@@ -80,9 +80,22 @@
 
     const lang = () => (state.language === 'auto' ? state.detected : state.language);
     const t = (key, vars) => getText(key, lang(), vars);
+    // Every item also has its own page (items/<slug>/, English under en/), written by
+    // prerender.cjs so search engines can read it without running this script. Such a
+    // page names its item and language on <html>; its language is the auto choice there.
+    const PAGE = document.documentElement.dataset || {};
+    const itemSlug = key => String(key).toLowerCase().replace(/_/g, '-');
+    const itemHref = (key, language = lang()) => `${language === 'en' ? 'en/' : ''}items/${itemSlug(key)}/`;
+    const detectLanguage = () => (SUPPORTED_LANGUAGES.includes(PAGE.pageLang) ? PAGE.pageLang : detectAndSetLanguage());
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const localized = (item, field) => (item[field] && (item[field][lang()] ?? item[field].en)) || '';
     const itemName = item => localized(item, 'names') || item.key;
+    // "크로노스 (Kronos) - 소라고둥의 축복 - 아이템 도감": the other language's name helps searches.
+    const itemTitle = item => {
+        const name = itemName(item);
+        const other = item.names && item.names[lang() === 'kr' ? 'en' : 'kr'];
+        return `${name}${other && other !== name ? ` (${other})` : ''} - ${t('pageTitle')}`;
+    };
     const effects = item => {
         const lines = item.eids && (item.eids[lang()] || item.eids.en);
         return Array.isArray(lines) ? lines : [];
@@ -100,8 +113,8 @@
     // default animation; only its own presentation counts for the filter.
     const hasOwnFx = item => item.fx === 'applied';
     // A missing sprite (work-in-progress items have none yet) becomes the name's first letter.
-    const sprite = (item, size) =>
-        `<img class="sprite${item.spriteFrame ? ' sprite-strip' : ''}" src="${escapeHtml(item.gfx || `resources/gfx/items/collectibles/${item.key.toLowerCase()}.png`)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async" data-initial="${escapeHtml(Array.from(itemName(item))[0] || '?')}">`;
+    const sprite = (item, size, alt = '') =>
+        `<img class="sprite${item.spriteFrame ? ' sprite-strip' : ''}" src="${escapeHtml(item.gfx || `resources/gfx/items/collectibles/${item.key.toLowerCase()}.png`)}" alt="${escapeHtml(alt)}" width="${size}" height="${size}" loading="lazy" decoding="async" data-initial="${escapeHtml(Array.from(itemName(item))[0] || '?')}">`;
     document.addEventListener('error', event => {
         const img = event.target;
         if (!(img instanceof HTMLImageElement) || !img.classList.contains('sprite')) return;
@@ -193,7 +206,7 @@
     // ---------- static texts ----------
     function applyTexts() {
         document.documentElement.lang = lang() === 'kr' ? 'ko' : 'en';
-        document.title = t('pageTitle');
+        updateTitle();
         document.querySelectorAll('[data-text]').forEach(el => { el.textContent = t(el.dataset.text); });
         document.querySelectorAll('[data-placeholder]').forEach(el => { el.placeholder = t(el.dataset.placeholder); });
         document.getElementById('searchClear').setAttribute('aria-label', t('clearSearch'));
@@ -244,17 +257,24 @@
         document.getElementById('filterToggle').setAttribute('aria-expanded', String(open));
     }
 
-    function renderGroups() {
-        const html = GROUPS.map(group => {
+    // Tiles are buttons here; the prerendered pages make them links to the item pages
+    // so crawlers that never run this script can still follow them.
+    function groupsHtml(links) {
+        return GROUPS.map(group => {
             const list = ITEMS.filter(group.test);
             if (!list.length) return '';
             const tiles = list.map(item => {
                 const label = itemName(item);
-                return `<button type="button" class="tile${isWip(item) ? ' wip' : ''}${item.flag ? ' has-flag' : ''}" data-key="${escapeHtml(item.key)}" style="--flag:${flagColor(item.flag)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${sprite(item, 64)}${isWip(item) ? '<span class="wip-mark">WIP</span>' : ''}</button>`;
+                const open = links ? `<a class="tile` : `<button type="button" class="tile`;
+                const target = links ? ` href="${escapeHtml(itemHref(item.key))}"` : '';
+                return `${open}${isWip(item) ? ' wip' : ''}${item.flag ? ' has-flag' : ''}"${target} data-key="${escapeHtml(item.key)}" style="--flag:${flagColor(item.flag)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${sprite(item, 64, links ? label : '')}${isWip(item) ? '<span class="wip-mark">WIP</span>' : ''}${links ? '</a>' : '</button>'}`;
             }).join('');
             return `<section class="group" data-group="${group.id}"><h2 class="group-title">${escapeHtml(t(group.text))} <span>${list.length}</span></h2><div class="icons">${tiles}</div></section>`;
         }).join('');
-        document.getElementById('groups').innerHTML = html;
+    }
+
+    function renderGroups() {
+        document.getElementById('groups').innerHTML = groupsHtml(false);
         updateFilters();
         markCurrent();
     }
@@ -277,17 +297,25 @@
         document.getElementById('searchClear').hidden = !state.query;
     }
 
+    const currentKey = () => (WIDE.matches ? state.pinned : state.sheetKey);
     function markCurrent() {
-        const current = WIDE.matches ? state.pinned : state.sheetKey;
+        const current = currentKey();
         document.querySelectorAll('.tile').forEach(tile => {
             tile.setAttribute('aria-current', tile.dataset.key === current ? 'true' : 'false');
         });
     }
 
+    // The tab names the pinned (or open) item, as its prerendered page does.
+    function updateTitle() {
+        const item = BY_KEY[currentKey()];
+        document.title = item ? itemTitle(item) : t('pageTitle');
+    }
+
     // ---------- detail ----------
     const stars = quality => (typeof quality === 'number'
         ? `<span class="stars" aria-label="Quality ${quality}">${'★'.repeat(quality)}<i>${'★'.repeat(Math.max(0, 4 - quality))}</i></span>` : '');
-    const itemLink = item => `<button type="button" class="link" data-goto="${escapeHtml(item.key)}">${sprite(item, 28)}${escapeHtml(itemName(item))}</button>`;
+    // A real link to the item's page, so a new tab or a crawler can follow it; a plain click selects in place.
+    const itemLink = item => `<a class="link" href="${escapeHtml(itemHref(item.key))}" data-goto="${escapeHtml(item.key)}">${sprite(item, 28)}${escapeHtml(itemName(item))}</a>`;
     const referenceHtml = ref => {
         if (ref.own) return itemLink(ref.own);
         const otherName = ref.vanilla && ref.vanilla.names[lang() === 'kr' ? 'en' : 'kr'];
@@ -540,9 +568,10 @@
         if (dialog.open) dialog.close();
     }
 
-    function select(key) {
+    // An item page opens its own item without rewriting its address (keepUrl).
+    function select(key, keepUrl) {
         if (!BY_KEY[key]) return;
-        setHash(key);
+        if (!keepUrl) setHash(key);
         if (WIDE.matches) {
             state.pinned = key;
             state.preview = null;
@@ -551,6 +580,7 @@
         } else {
             openSheet(key);
         }
+        updateTitle();
     }
 
     // ---------- events ----------
@@ -565,6 +595,7 @@
                 setHash(null);
                 renderPanel();
                 markCurrent();
+                updateTitle();
             } else select(tile.dataset.key);
         });
         groups.addEventListener('mouseover', event => {
@@ -589,10 +620,17 @@
         // Links inside a detail (origin, evolutions, synergy items) and the copy-link button.
         document.addEventListener('click', event => {
             const goto = event.target.closest('[data-goto]');
-            if (goto) { select(goto.dataset.goto); return; }
+            if (goto) {
+                // A modified click (new tab or window) follows the link to the item's page.
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                select(goto.dataset.goto);
+                return;
+            }
             const copy = event.target.closest('[data-copy-link]');
             if (copy) {
-                const url = `${location.origin}${location.pathname}#${encodeURIComponent(copy.dataset.copyLink)}`;
+                // The item's own page, so a shared link shows its name and description.
+                const url = new URL(itemHref(copy.dataset.copyLink), document.baseURI).href;
                 const done = () => { copy.textContent = t('linkCopied'); setTimeout(() => { copy.textContent = t('copyLink'); }, 1600); };
                 if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, () => window.prompt(t('copyLink'), url));
                 else window.prompt(t('copyLink'), url);
@@ -610,6 +648,7 @@
             // Closing the sheet clears an item link, never the upgrade-effects route.
             if (!WIDE.matches && fxKeyOf(location.hash) === null) setHash(null);
             markCurrent();
+            updateTitle();
         });
 
         const search = document.getElementById('searchInput');
@@ -653,7 +692,7 @@
 
         document.getElementById('languageSelect').addEventListener('change', event => {
             state.language = event.target.value;
-            if (state.language === 'auto') state.detected = detectAndSetLanguage();
+            if (state.language === 'auto') state.detected = detectLanguage();
             storeLanguage(state.language);
             rerenderAll();
         });
@@ -667,6 +706,7 @@
                 renderPanel();
             }
             markCurrent();
+            updateTitle();
         });
 
         // A small player reports its height so the frame fits its stage and controls.
@@ -718,19 +758,32 @@
         trackTopbarHeight();
         const saved = readStoredLanguage();
         state.language = SUPPORTED_LANGUAGES.includes(saved) ? saved : 'auto';
-        state.detected = detectAndSetLanguage();
+        state.detected = detectLanguage();
         bindEvents();
         rerenderAll();
 
         if (route()) return;
         const hashKey = decodeURIComponent(location.hash.slice(1));
         if (BY_KEY[hashKey]) select(hashKey);
+        else if (BY_KEY[PAGE.pageItem]) select(PAGE.pageItem, true);
     }
 
     window.ConchBlessing = {
         getDisplayLanguage: lang,
         select
     };
+
+    // prerender.cjs runs this file in Node with stub globals to write the static pages
+    // from the same markup the codex draws; it never starts the page there.
+    if (window.CB_PRERENDER) {
+        Object.assign(window.CB_PRERENDER, {
+            ITEMS, GROUPS, isWip, isPocket, itemSlug, itemHref, itemName, itemTitle, effects, localized, t, groupsHtml,
+            setLanguage(language) { state.language = language; },
+            detailHtml: item => detailHtml(item).split(FX_MARK).join(''),
+            defaultKey: () => ITEMS.find(item => !isWip(item))?.key
+        });
+        return;
+    }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();

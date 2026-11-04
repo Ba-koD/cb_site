@@ -310,5 +310,30 @@ const fs = require('node:fs');
     assert.ok((await dimensions('#detailDialog')).height < tallSheet.height, 'short mobile details should shrink');
     assert.deepEqual(errors, [], 'browser runtime errors');
     console.log('PASS desktop/mobile layout and no browser errors');
+
+    // Item pages written by prerender.cjs: the item and its text are in the HTML itself,
+    // the page's language is the auto choice there, and the codex takes over as usual.
+    const seoPage = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
+    seoPage.on('pageerror', error => errors.push(error.message));
+    const raw = await (await seoPage.request.get(`${base}items/kronos/`)).text();
+    assert.ok(raw.includes('<link rel="canonical" href="https://') && raw.includes('/items/kronos/"'), 'canonical link');
+    assert.ok(raw.includes('<html lang="ko" data-page-lang="kr" data-page-item="KRONOS">'));
+    assert.ok(raw.includes('<h2>크로노스</h2>') && raw.includes('href="items/live-eye/"'), 'item detail and tile links in the HTML');
+    await seoPage.goto(`${base}items/kronos/`, { waitUntil: 'networkidle' });
+    assert.equal(await seoPage.title(), '크로노스 (Kronos) - 소라고둥의 축복 - 아이템 도감');
+    assert.equal(await seoPage.locator('#detailPanel h2').textContent(), '크로노스');
+    assert.equal(new URL(seoPage.url()).pathname, '/items/kronos/', 'opening the page item keeps the address');
+    await seoPage.goto(`${base}en/items/f-minus/`, { waitUntil: 'networkidle' });
+    assert.equal(await seoPage.locator('#detailPanel h2').textContent(), 'F -');
+    const evolution = seoPage.locator('#detailPanel a.link[data-goto="C_MINUS"]').first();
+    assert.equal(await evolution.getAttribute('href'), 'en/items/c-minus/');
+    await evolution.click();
+    assert.equal(await seoPage.locator('#detailPanel h2').textContent(), 'C -', 'a plain click selects in place');
+    assert.ok((await seoPage.title()).startsWith('C - - Conch'));
+    for (const file of ['robots.txt', 'sitemap.xml']) {
+        assert.equal((await seoPage.request.get(`${base}${file}`)).status(), 200, file);
+    }
+    assert.deepEqual(errors, [], 'browser runtime errors on item pages');
+    console.log('PASS item pages: HTML content, page language, in-place links, robots.txt and sitemap.xml');
     await browser.close();
 })().catch(error => { console.error(error); process.exit(1); });

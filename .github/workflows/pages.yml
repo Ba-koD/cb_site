@@ -96,6 +96,22 @@ jobs:
           echo "Build ID: ${BUILD_ID}"
           echo "Build tree:" && find build -maxdepth 3 -type f | sort
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 검색엔진용: 아이템마다 items/<slug>/ (영어 en/items/<slug>/) 정적 페이지,
+      # sitemap.xml, robots.txt, verification/의 소유 확인 파일을 build에 쓴다.
+      # 페이지는 script.js의 렌더 함수로 그리므로 도감과 같은 내용이다.
+      - name: Prerender pages for search engines
+        run: |
+          node prerender.cjs build
+          for f in robots.txt sitemap.xml items/kronos/index.html en/items/kronos/index.html; do
+            test -s "build/$f" || { echo "::error::build/$f is missing"; exit 1; }
+          done
+          grep -q 'rel="canonical"' build/items/kronos/index.html
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

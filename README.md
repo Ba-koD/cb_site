@@ -31,8 +31,9 @@ used for the vanilla catalog.
 
 Generate `items.js` from a mod checkout with `generate_items_js.py`, generate
 `itemmap.js` with `build_id_pools.py`, and run `build_vanilla_js.py`. Copy the mod's
-`resources/gfx/items` folders into the local preview and serve it over HTTP.
-With Playwright and Chrome installed, run:
+`resources/gfx/items` folders into the local preview, assemble it as the Pages
+workflow does, run `node prerender.cjs <folder>` once on that fresh folder, and
+serve it over HTTP. With Playwright and Chrome installed, run:
 
 ```sh
 node tests/browser.cjs http://127.0.0.1:8766/
@@ -41,7 +42,16 @@ node tests/browser.cjs http://127.0.0.1:8766/
 The check exercises composition/input events without replacing the focused
 search node, caret retention, Korean/English matching, no-match/clear behavior,
 all generated synergy images, upgrade images, localized evolution conditions,
-pin/hover precedence, preview size/scrolling and desktop/mobile section order.
+pin/hover precedence, preview size/scrolling, desktop/mobile section order, and
+the prerendered item pages.
+
+## Search engines
+
+`prerender.cjs` writes a page for every item (`/items/<slug>/`, English under
+`/en/items/<slug>/`) with its title, description and full detail in the HTML,
+plus `sitemap.xml` and `robots.txt`. The site address and the meta-tag codes that
+Google Search Console, Naver Search Advisor and Bing Webmaster Tools give for
+ownership go in `seo.json`; their file method uses `verification/`.
 
 Magic Conch routes use the source registry's origin and answer flag for both
 vanilla and mod origins. Separate evolution routes use the source locales'
