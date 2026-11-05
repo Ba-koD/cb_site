@@ -4,6 +4,7 @@
 //   items/<slug>/index.html  each item's own page, Korean
 //   en/items/<slug>/...      the same page in English
 //   sitemap.xml, robots.txt  and any verification files from verification/
+//   llms.txt, llms-full.txt  every item as plain text for AI assistants (English under en/)
 // The pages are the codex itself: script.js runs here with stub globals and draws the
 // same markup it draws in the browser, and on load it takes over the page as usual.
 // Usage: node prerender.cjs [site folder]
@@ -118,6 +119,7 @@ function headBlock(page) {
     }
     if (page.image) lines.push(`<meta property="og:image" content="${escapeHtml(page.image)}">`);
     lines.push('<meta name="twitter:card" content="summary">');
+    if (page.textIndex) lines.push(`<link rel="alternate" type="text/plain" href="${escapeHtml(`${ORIGIN}/llms.txt`)}" title="llms.txt">`);
     for (const [name, content] of Object.entries(page.verification || {})) {
         if (content) lines.push(`<meta name="${escapeHtml(name)}" content="${escapeHtml(content)}">`);
     }
@@ -163,7 +165,93 @@ function renderPage(page) {
     const shown = page.item || codex.ITEMS.find(item => item.key === codex.defaultKey());
     const detail = shown ? `${codex.detailHtml(shown)}<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>` : '';
     html = replaceOnce(html, /(<aside class="panel" id="detailPanel"[^>]*>)(<\/aside>)/, (_, open, close) => `${open}${detail}${close}`, 'detail panel');
+    // The home page's tiles are pictures; tools that read it as text find every item here.
+    // Item pages leave it empty, as the script does, so they do not all repeat the list.
+    const catalog = page.item ? '' : codex.catalogHtml(false);
+    html = replaceOnce(html, /(<div id="catalog">)(<\/div>)/, (_, open, close) => `${open}${catalog}${close}`, 'text list');
     return html;
+}
+
+// ---------- text files for AI assistants ----------
+// llms.txt (https://llmstxt.org) lists the items with links; llms-full.txt (Korean) and
+// en/llms-full.txt hold every item's whole detail, so an assistant that reads one file
+// can answer about any item. Both come from script.js's itemText, like the pages.
+const SITE_NAMES = { kr: '소라고둥의 축복', en: "Conch's Blessing" };
+const LANGUAGE_NAMES = { kr: '한국어', en: 'English' };
+const LINKS = (() => {
+    const html = TEMPLATE.before + TEMPLATE.after;
+    const matchOnce = (pattern, what) => {
+        const matches = [...html.matchAll(new RegExp(pattern.source, 'g'))];
+        if (matches.length !== 1) fail(`index.html: expected one ${what}, found ${matches.length}`);
+        return matches[0];
+    };
+    const workshop = matchOnce(/<a class="button" href="([^"]+)"[^>]*data-text="workshop"/, 'Workshop link');
+    const required = matchOnce(/data-text="required"[^]*?<a href="([^"]+)"[^>]*>([^<]+)<\/a>/, 'required mod link');
+    return { workshop: workshop[1], required: { url: required[1], name: required[2].trim() } };
+})();
+const fullTextUrl = language => `${ORIGIN}/${LANGUAGES[language].dir}llms-full.txt`;
+const metaLine = text => [text.kind, text.quality !== null ? `${t('filterQuality')} ${text.quality}` : ''].filter(Boolean).join(' · ');
+
+function itemMarkdown(item, language) {
+    const text = codex.itemText(item);
+    const out = [`### ${text.name}${text.otherName ? ` (${text.otherName})` : ''}`, '', `${metaLine(text)} · ${t('itemPage')}: ${pageUrl(item, language)}`];
+    if (text.quote) out.push('', `> “${text.quote}”`);
+    const section = (title, lines) => { if (lines.length) out.push('', `**${title}**`, ...lines.map(line => `- ${line}`)); };
+    section(t('effects'), text.effects);
+    section(t('goldenEffects'), text.golden.map(([label, lines]) => `${label}: ${lines.join(' / ')}`));
+    section(t('obtain'), text.obtain ? [text.obtain] : []);
+    section(t('upgrade'), text.upgrade);
+    section(t('upgradeResults'), text.upgradeResults);
+    section(t('evolvesFrom'), text.evolvesFrom);
+    section(t('evolvesInto'), text.evolvesInto);
+    section(t('details'), text.facts.map(([label, value]) => `${label}: ${value}`));
+    section(`${t('synergies')} · ${text.synergies.length}`, text.synergies.map(([name, body]) => `${name}: ${body}`));
+    return out.join('\n');
+}
+
+function fullText(language) {
+    codex.setLanguage(language);
+    const other = language === 'kr' ? 'en' : 'kr';
+    const lines = [
+        `# ${SITE_NAMES[language]} (${SITE_NAMES[other]}) - ${t('subtitle')}`,
+        '', `> ${t('metaHome')}`,
+        '', `${t('introText')} ${t('required')}: ${LINKS.required.name} (${LINKS.required.url})`,
+        '', `- ${t('subtitle')}: ${ORIGIN}/`,
+        `- ${t('workshop')}: ${LINKS.workshop}`,
+        `- ${LANGUAGE_NAMES[other]}: ${fullTextUrl(other)}`
+    ];
+    for (const group of codex.GROUPS) {
+        const list = codex.ITEMS.filter(group.test);
+        if (!list.length) continue;
+        lines.push('', `## ${t(group.text)} (${list.length})`);
+        if (group.id === 'wip') lines.push('', t('wipText'), '', ...list.map(item => `- ${codex.itemName(item)}`));
+        else for (const item of list) lines.push('', itemMarkdown(item, language));
+    }
+    return `${lines.join('\n')}\n`;
+}
+
+function indexText() {
+    codex.setLanguage('en');
+    const lines = [
+        `# ${SITE_NAMES.en} (${SITE_NAMES.kr}) - ${t('subtitle')}`,
+        '', `> ${t('metaHome')}`,
+        '', `${t('introText')} ${t('required')}: ${LINKS.required.name} (${LINKS.required.url})`,
+        '', "Every item's whole detail (effects, golden and Mom's Box effects, Magic Conch upgrade path, evolutions, item pools, stacking and synergies) is in one plain-text file per language. Read one of them to answer questions about the items or to recommend them.",
+        '', `- [Full text, Korean (한국어)](${fullTextUrl('kr')})`,
+        `- [Full text, English](${fullTextUrl('en')})`
+    ];
+    for (const group of codex.GROUPS.filter(group => group.id !== 'wip')) {
+        const list = codex.ITEMS.filter(group.test);
+        if (!list.length) continue;
+        lines.push('', `## ${t(group.text)}`, '');
+        for (const item of list) {
+            const text = codex.itemText(item);
+            const summary = clip(text.effects.map(sentence).join(' ') || text.quote, 220);
+            lines.push(`- [${text.name}${text.otherName ? ` / ${text.otherName}` : ''}](${pageUrl(item, 'en')}): ${metaLine(text)}. ${summary}`);
+        }
+    }
+    lines.push('', '## Optional', '', `- [${t('workshop')}](${LINKS.workshop})`, `- [${t('subtitle')}](${ORIGIN}/)`);
+    return `${lines.join('\n')}\n`;
 }
 
 function write(relative, content) {
@@ -191,6 +279,7 @@ write('index.html', renderPage({
     title: `${t('siteName')} (Conch's Blessing) - ${t('subtitle')}`,
     description: t('metaHome'),
     url: `${ORIGIN}/`,
+    textIndex: true,
     verification: config.verification,
     structured: {
         '@context': 'https://schema.org', '@type': 'WebSite', name: "Conch's Blessing",
@@ -232,6 +321,10 @@ write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 ${sitemap.map(loc => `  <url><loc>${escapeHtml(loc)}</loc></url>`).join('\n')}
 </urlset>
 `);
+
+write('llms.txt', indexText());
+write('llms-full.txt', fullText('kr'));
+write(path.join(LANGUAGES.en.dir, 'llms-full.txt'), fullText('en'));
 
 // The 14 MB upgrade player is only ever shown inside the codex.
 write('robots.txt', `User-agent: *

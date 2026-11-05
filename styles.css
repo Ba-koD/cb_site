@@ -227,6 +227,24 @@ a.tile { color: inherit; text-decoration: none; } /* prerendered pages' tiles ar
 }
 .empty { color: var(--muted); padding: 24px 0; }
 
+/* ---------- text list (home page): the tiles' items as text, collapsed ---------- */
+.catalog { margin-top: 26px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); }
+.catalog summary { cursor: pointer; padding: 10px 14px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.catalog summary:hover { color: var(--text); }
+.catalog[open] summary { border-bottom: 1px solid var(--line); }
+.catalog-note { padding: 10px 14px 0; font-size: 12.5px; color: var(--faint); overflow-wrap: anywhere; }
+.catalog-group { padding: 6px 14px 14px; }
+.catalog-group h3 { margin: 12px 0 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.catalog-group h3 span { color: var(--faint); font-weight: 500; }
+.catalog-group dt { margin-top: 12px; font-weight: 700; }
+.catalog-group dt a { text-decoration: none; }
+.catalog-group dt a:hover { text-decoration: underline; }
+.catalog-sub, .catalog-meta { font-size: 12.5px; font-weight: 500; color: var(--faint); }
+.catalog-meta::before { content: "· "; }
+.catalog-group dd { font-size: 13.5px; }
+.catalog-quote { color: var(--muted); font-style: italic; }
+.catalog-group ul { padding-left: 18px; }
+
 /* ---------- detail (panel and sheet share this) ---------- */
 .panel {
     display: none;

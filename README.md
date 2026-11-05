@@ -49,7 +49,11 @@ the prerendered item pages.
 
 `prerender.cjs` writes a page for every item (`/items/<slug>/`, English under
 `/en/items/<slug>/`) with its title, description and full detail in the HTML,
-plus `sitemap.xml` and `robots.txt`. The site address and the meta-tag codes that
+plus `sitemap.xml` and `robots.txt`. For AI assistants, which read pages as text
+and skip the icon tiles, the home page holds a collapsed text list of every item,
+and `llms.txt`, `llms-full.txt` (Korean) and `en/llms-full.txt` hold every item's
+whole detail; telling an assistant to read `https://tboi.rnen.kr/llms-full.txt`
+gives it the full codex in one file. The site address and the meta-tag codes that
 Google Search Console, Naver Search Advisor and Bing Webmaster Tools give for
 ownership go in `seo.json`; their file method uses `verification/`.
 

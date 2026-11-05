@@ -316,12 +316,21 @@
         ? `<span class="stars" aria-label="Quality ${quality}">${'★'.repeat(quality)}<i>${'★'.repeat(Math.max(0, 4 - quality))}</i></span>` : '');
     // A real link to the item's page, so a new tab or a crawler can follow it; a plain click selects in place.
     const itemLink = item => `<a class="link" href="${escapeHtml(itemHref(item.key))}" data-goto="${escapeHtml(item.key)}">${sprite(item, 28)}${escapeHtml(itemName(item))}</a>`;
+    // "Dead Eye · c373": a vanilla reference's name in the other language and its ID.
+    const referenceSecondary = ref => {
+        const otherName = ref.vanilla && ref.vanilla.names[lang() === 'kr' ? 'en' : 'kr'];
+        return [otherName !== ref.label ? otherName : '', ref.id].filter(Boolean).join(' · ');
+    };
     const referenceHtml = ref => {
         if (ref.own) return itemLink(ref.own);
-        const otherName = ref.vanilla && ref.vanilla.names[lang() === 'kr' ? 'en' : 'kr'];
-        const secondary = [otherName !== ref.label ? otherName : '', ref.id].filter(Boolean).join(' · ');
+        const secondary = referenceSecondary(ref);
         return `<span class="reference">${ref.vanilla ? sprite(ref.vanilla, 32) : ''}<span class="reference-text"><span class="reference-name">${escapeHtml(ref.label)}</span>
             ${secondary ? `<small>${escapeHtml(secondary)}</small>` : ''}</span></span>`;
+    };
+    const referenceText = ref => {
+        if (ref.own) return itemName(ref.own);
+        const secondary = referenceSecondary(ref);
+        return secondary ? `${ref.label} (${secondary})` : ref.label;
     };
 
     const upgradePath = (origin, target) => `<div class="path">${referenceHtml(origin)}<span class="arrow">→</span>
@@ -330,16 +339,51 @@
     const evolutionPath = (source, target, conditions) => `<div class="path">${itemLink(source)}<span class="arrow">→</span>${itemLink(target)}</div>
         <p class="path-note">${escapeHtml(t('evolutionCondition'))}: ${escapeHtml(conditions[lang()] || conditions.en || '')}</p>`;
 
+    const synergyEntries = item => Object.entries(item.synergies || {}).map(([key, textByLang]) => {
+        const prefix = (item.synergy_types && item.synergy_types[key]) === 'trinket' ? 'T' : 'C';
+        return { key, textByLang, ref: resolveReference(prefix, key), body: textByLang[lang()] || textByLang.en || '' };
+    });
+
     function synergyRows(item) {
-        return Object.entries(item.synergies || {}).map(([key, textByLang]) => {
-            const prefix = (item.synergy_types && item.synergy_types[key]) === 'trinket' ? 'T' : 'C';
-            const ref = resolveReference(prefix, key);
-            const body = textByLang[lang()] || textByLang.en || '';
+        return synergyEntries(item).map(({ key, textByLang, ref, body }) => {
             const names = ref.own ? ref.own.names : ref.vanilla && ref.vanilla.names;
             const search = normalizeSearch([key, ref.id, ...Object.values(names || {}), ...Object.values(textByLang)].join('\n'));
             return `<div class="syn" data-synergy-search="${escapeHtml(search)}"><div class="syn-name">${referenceHtml(ref)}</div><p>${escapeHtml(body)}</p></div>`;
         }).join('');
     }
+
+    // Golden and Mom's Box usually do the same; then they share one row.
+    function goldenRows(item) {
+        const golden = item.golden && (item.golden[lang()] || item.golden.en);
+        if (!golden) return [];
+        const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+        const rows = same(golden.golden, golden.momsBox)
+            ? [['golden_either', golden.golden], ['golden_both', golden.both]]
+            : [['golden_golden', golden.golden], ['golden_momsBox', golden.momsBox], ['golden_both', golden.both]];
+        return rows.filter(([, lines]) => lines && lines.length).map(([label, lines]) => [t(label), lines]);
+    }
+
+    // The details rows: [label, text], or [label, [chips]] for lists.
+    function factRows(item) {
+        const facts = [];
+        const pools = poolsOf(item);
+        if (pools.length) facts.push([t('pools'), pools.map(poolName)]);
+        if (stackingOf(item)) facts.push([t('stacking'), t(stackingOf(item))]);
+        if (goldenOf(item)) facts.push([t('goldenBox'), t(goldenOf(item))]);
+        if (item.tags) facts.push([t('tags'), item.tags.split(/\s+/).filter(Boolean)]);
+        if (item.shopprice) facts.push([t('shopPrice'), `${item.shopprice}¢`]);
+        if (item.devilprice) facts.push([t('devilPrice'), '♥'.repeat(Math.max(1, item.devilprice))]);
+        if (item.maxcharges) facts.push([t('charges'), String(item.maxcharges)]);
+        return facts;
+    }
+
+    // "패시브" etc.; a card type the texts do not name reads as a card.
+    const kindText = item => {
+        if (isWip(item)) return t('wip');
+        const label = t(item.type || 'passive');
+        if (label !== item.type) return label;
+        return t(isPocket(item) ? 'card' : 'passive');
+    };
 
     function detailHtml(item) {
         const name = itemName(item);
@@ -352,7 +396,7 @@
                     <h2>${escapeHtml(name)}</h2>
                     ${otherName && otherName !== name ? `<p class="d-sub">${escapeHtml(otherName)}</p>` : ''}
                     <div class="badges">
-                        ${isWip(item) ? `<span class="badge">${escapeHtml(t('wip'))}</span>` : `<span class="badge">${escapeHtml(t(item.type || 'passive'))}</span>`}
+                        <span class="badge">${escapeHtml(kindText(item))}</span>
                         ${item.flag ? `<span class="badge flag ${escapeHtml(item.flag)}" title="${escapeHtml(t('flagDesc_' + item.flag))}">${escapeHtml(t(item.flag))}</span>` : ''}
                         ${!isWip(item) && item.type !== 'trinket' ? stars(item.quality) : ''}
                     </div>
@@ -365,18 +409,10 @@
         const lines = effects(item);
         const effectsHtml = lines.length
             ? `<section class="d-section"><h3>${escapeHtml(t('effects'))}</h3><ul class="d-effects">${lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></section>` : '';
-        // Golden and Mom's Box usually do the same; then they share one row.
-        const golden = item.golden && (item.golden[lang()] || item.golden.en);
-        let goldenHtml = '';
-        if (golden) {
-            const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-            const rows = same(golden.golden, golden.momsBox)
-                ? [['golden_either', golden.golden], ['golden_both', golden.both]]
-                : [['golden_golden', golden.golden], ['golden_momsBox', golden.momsBox], ['golden_both', golden.both]];
-            goldenHtml = `<section class="d-section d-golden"><h3>${escapeHtml(t('goldenEffects'))}</h3><dl class="facts">${rows
-                .filter(([, lines]) => lines && lines.length)
-                .map(([label, lines]) => `<dt>${escapeHtml(t(label))}</dt><dd>${lines.map(escapeHtml).join('<br>')}</dd>`).join('')}</dl></section>`;
-        }
+        const golden = goldenRows(item);
+        const goldenHtml = golden.length
+            ? `<section class="d-section d-golden"><h3>${escapeHtml(t('goldenEffects'))}</h3><dl class="facts">${golden
+                .map(([label, lines]) => `<dt>${escapeHtml(label)}</dt><dd>${lines.map(escapeHtml).join('<br>')}</dd>`).join('')}</dl></section>` : '';
         const obtainHtml = isPocket(item)
             ? `<section class="d-section d-obtain"><h3>${escapeHtml(t('obtain'))}</h3><p class="path-note">${escapeHtml(t('pocketSource_' + item.type))}</p></section>` : '';
 
@@ -403,22 +439,77 @@
                 <div class="syn-list">${synergyRows(item)}<p class="path-note" data-synergy-empty hidden>${escapeHtml(t('noSynergyMatch'))}</p></div></section>`;
         }
 
-        const pools = poolsOf(item);
-        const facts = [];
-        if (pools.length) facts.push([t('pools'), `<div class="mini-chips">${pools.map(pool => `<span class="mini-chip">${escapeHtml(poolName(pool))}</span>`).join('')}</div>`]);
-        if (stackingOf(item)) facts.push([t('stacking'), escapeHtml(t(stackingOf(item)))]);
-        if (goldenOf(item)) facts.push([t('goldenBox'), escapeHtml(t(goldenOf(item)))]);
-        if (item.tags) facts.push([t('tags'), `<div class="mini-chips">${item.tags.split(/\s+/).filter(Boolean).map(tag => `<span class="mini-chip">${escapeHtml(tag)}</span>`).join('')}</div>`]);
-        if (item.shopprice) facts.push([t('shopPrice'), `${item.shopprice}¢`]);
-        if (item.devilprice) facts.push([t('devilPrice'), '♥'.repeat(Math.max(1, item.devilprice))]);
-        if (item.maxcharges) facts.push([t('charges'), String(item.maxcharges)]);
+        const facts = factRows(item);
+        const factValue = value => (Array.isArray(value)
+            ? `<div class="mini-chips">${value.map(chip => `<span class="mini-chip">${escapeHtml(chip)}</span>`).join('')}</div>` : escapeHtml(value));
         const factsHtml = facts.length
-            ? `<section class="d-section"><h3>${escapeHtml(t('details'))}</h3><dl class="facts">${facts.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${value}</dd>`).join('')}</dl></section>` : '';
+            ? `<section class="d-section"><h3>${escapeHtml(t('details'))}</h3><dl class="facts">${facts.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${factValue(value)}</dd>`).join('')}</dl></section>` : '';
 
         return `${head}
             ${description ? `<p class="d-quote">“${escapeHtml(description)}”</p>` : ''}
             ${effectsHtml}${goldenHtml}${obtainHtml}${upgradeHtml}${FX_MARK}${childrenHtml}${evolutionHtml}${factsHtml}
             <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>${synergyHtml}`;
+    }
+
+    // ---------- plain text ----------
+    // An item's detail as plain text. The home page's text list and prerender.cjs's
+    // llms.txt files read it, so tools that read a page as text (AI assistants, text
+    // browsers), which skip the icon tiles, still see every item's effects.
+    function itemText(item) {
+        const name = itemName(item);
+        const other = item.names && item.names[lang() === 'kr' ? 'en' : 'kr'];
+        const text = {
+            key: item.key, href: itemHref(item.key), name, otherName: other && other !== name ? other : '',
+            kind: kindText(item), quality: !isWip(item) && item.type !== 'trinket' && typeof item.quality === 'number' ? item.quality : null,
+            quote: isWip(item) ? t('wipText') : localized(item, 'descriptions'),
+            effects: [], golden: [], obtain: '', upgrade: [], upgradeResults: [], evolvesFrom: [], evolvesInto: [], facts: [], synergies: []
+        };
+        if (isWip(item)) return text;
+        const pathText = (origin, target) => `${referenceText(origin)} → ${t('answer', { flag: t(target.flag) })} → ${itemName(target)}`;
+        const evolutionText = (source, target, conditions) =>
+            `${itemName(source)} → ${itemName(target)} (${t('evolutionCondition')}: ${conditions[lang()] || conditions.en || ''})`;
+        const origin = originOf(item);
+        return Object.assign(text, {
+            effects: effects(item).filter(line => line.trim()),
+            golden: goldenRows(item),
+            obtain: isPocket(item) ? t('pocketSource_' + item.type) : '',
+            upgrade: origin && FLAGS.includes(item.flag) ? [pathText(origin, item)] : [],
+            upgradeResults: (CHILDREN[item.key] || []).map(child => pathText({ own: item }, child)),
+            evolvesFrom: (EVOLUTION_SOURCES[item.key] || []).map(route => evolutionText(route.source, item, route.conditions)),
+            evolvesInto: (item.evolutions || []).filter(route => BY_KEY[route.target])
+                .map(route => evolutionText(item, BY_KEY[route.target], route.conditions)),
+            facts: factRows(item).map(([label, value]) => [label, Array.isArray(value) ? value.join(', ') : value]),
+            synergies: synergyEntries(item).map(({ ref, body }) => [referenceText(ref), body])
+        });
+    }
+
+    // Under the tiles on the home page: every released item with its effects and upgrade
+    // path, collapsed. Synergies stay on the item pages and in llms-full.txt.
+    function catalogHtml(open) {
+        const sections = GROUPS.filter(group => group.id !== 'wip').map(group => {
+            const list = ITEMS.filter(group.test);
+            if (!list.length) return '';
+            const rows = list.map(item => {
+                const text = itemText(item);
+                const meta = [text.kind, text.quality !== null ? `★${text.quality}` : ''].filter(Boolean).join(' · ');
+                const lines = [...text.effects, ...text.upgrade.map(path => `${t('upgrade')}: ${path}`)];
+                return `<dt><a class="catalog-name" href="${escapeHtml(text.href)}" data-goto="${escapeHtml(item.key)}">${escapeHtml(text.name)}</a>`
+                    + `${text.otherName ? ` <span class="catalog-sub">${escapeHtml(text.otherName)}</span>` : ''} <span class="catalog-meta">${escapeHtml(meta)}</span></dt>`
+                    + `<dd>${text.quote ? `<p class="catalog-quote">“${escapeHtml(text.quote)}”</p>` : ''}<ul>${lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></dd>`;
+            }).join('');
+            return `<section class="catalog-group"><h3>${escapeHtml(t(group.text))} <span>${list.length}</span></h3><dl>${rows}</dl></section>`;
+        }).join('');
+        const fullText = lang() === 'en' ? 'en/llms-full.txt' : 'llms-full.txt';
+        return `<details class="catalog"${open ? ' open' : ''}><summary>${escapeHtml(t('catalogTitle'))}</summary>`
+            + `<p class="catalog-note">${escapeHtml(t('catalogNote'))} <a href="${fullText}">${fullText}</a></p>${sections}</details>`;
+    }
+
+    // Item pages carry their own item instead, so 42 pages do not repeat the whole list.
+    function renderCatalog() {
+        const container = document.getElementById('catalog');
+        if (!container || PAGE.pageItem) return;
+        const open = Boolean(container.querySelector('details[open]'));
+        container.innerHTML = catalogHtml(open);
     }
 
     function stopFrame(frame) {
@@ -731,6 +822,7 @@
         renderFlags();
         renderFilterPanel();
         renderGroups();
+        renderCatalog();
         const panel = document.getElementById('detailPanel');
         panel.dataset.stale = '1';
         renderPanel();
@@ -778,6 +870,7 @@
     if (window.CB_PRERENDER) {
         Object.assign(window.CB_PRERENDER, {
             ITEMS, GROUPS, isWip, isPocket, itemSlug, itemHref, itemName, itemTitle, effects, localized, t, groupsHtml,
+            itemText, catalogHtml, kindText,
             setLanguage(language) { state.language = language; },
             detailHtml: item => detailHtml(item).split(FX_MARK).join(''),
             defaultKey: () => ITEMS.find(item => !isWip(item))?.key

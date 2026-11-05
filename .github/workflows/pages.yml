@@ -103,14 +103,18 @@ jobs:
 
       # 검색엔진용: 아이템마다 items/<slug>/ (영어 en/items/<slug>/) 정적 페이지,
       # sitemap.xml, robots.txt, verification/의 소유 확인 파일을 build에 쓴다.
+      # AI 도우미용: 모든 아이템을 글로 담은 llms.txt, llms-full.txt(영어 en/)도 쓴다.
       # 페이지는 script.js의 렌더 함수로 그리므로 도감과 같은 내용이다.
       - name: Prerender pages for search engines
         run: |
           node prerender.cjs build
-          for f in robots.txt sitemap.xml items/kronos/index.html en/items/kronos/index.html; do
+          for f in robots.txt sitemap.xml llms.txt llms-full.txt en/llms-full.txt items/kronos/index.html en/items/kronos/index.html; do
             test -s "build/$f" || { echo "::error::build/$f is missing"; exit 1; }
           done
           grep -q 'rel="canonical"' build/items/kronos/index.html
+          # 홈의 글 목록이 첫 아이템만이 아니라 다른 아이템의 효과도 담는지
+          grep -q 'class="catalog-name" href="items/kronos/"' build/index.html
+          grep -q 'items/kronos/' build/llms-full.txt
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
