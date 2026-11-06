@@ -163,7 +163,8 @@ function renderPage(page) {
     html = replaceOnce(html, /(<p class="count" id="resultCount"[^>]*>)(<\/p>)/, `$1${escapeHtml(t('itemCount', { n: counted }))}$2`, 'result count');
     html = replaceOnce(html, /(<div id="groups">)(<\/div>)/, () => `<div id="groups">${codex.groupsHtml(true)}</div>`, 'item groups');
     const shown = page.item || codex.ITEMS.find(item => item.key === codex.defaultKey());
-    const detail = shown ? `${codex.detailHtml(shown)}<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>` : '';
+    // An item page's own item is its h1; narrow screens show it at the top of the page.
+    const detail = shown ? `${codex.detailHtml(shown, page.item ? 'h1' : 'h2')}<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>` : '';
     html = replaceOnce(html, /(<aside class="panel" id="detailPanel"[^>]*>)(<\/aside>)/, (_, open, close) => `${open}${detail}${close}`, 'detail panel');
     // The home page's tiles are pictures; tools that read it as text find every item here.
     // Item pages leave it empty, as the script does, so they do not all repeat the list.

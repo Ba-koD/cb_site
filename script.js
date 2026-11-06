@@ -305,9 +305,10 @@
         });
     }
 
-    // The tab names the pinned (or open) item, as its prerendered page does.
+    // The tab names the pinned (or open) item, as its prerendered page does; an item
+    // page keeps its own item's name while nothing else is open.
     function updateTitle() {
-        const item = BY_KEY[currentKey()];
+        const item = BY_KEY[currentKey()] || BY_KEY[PAGE.pageItem];
         document.title = item ? itemTitle(item) : t('pageTitle');
     }
 
@@ -385,7 +386,8 @@
         return t(isPocket(item) ? 'card' : 'passive');
     };
 
-    function detailHtml(item) {
+    // An item page's own item is that page's heading (h1); everywhere else details use h2.
+    function detailHtml(item, heading = 'h2') {
         const name = itemName(item);
         const otherName = lang() === 'kr' ? item.names && item.names.en : item.names && item.names.kr;
         const description = localized(item, 'descriptions');
@@ -393,7 +395,7 @@
             <header class="d-head">
                 <div class="d-icon" style="--flag:${flagColor(item.flag)}">${sprite(item, 64)}</div>
                 <div class="d-title">
-                    <h2>${escapeHtml(name)}</h2>
+                    <${heading}>${escapeHtml(name)}</${heading}>
                     ${otherName && otherName !== name ? `<p class="d-sub">${escapeHtml(otherName)}</p>` : ''}
                     <div class="badges">
                         <span class="badge">${escapeHtml(kindText(item))}</span>
@@ -571,7 +573,8 @@
         const item = BY_KEY[key];
         if (!item) { container.innerHTML = ''; return; }
         const parts = detailParts(container);
-        const [before, after] = detailHtml(item).split(FX_MARK);
+        const heading = container.id === 'detailPanel' && key === PAGE.pageItem ? 'h1' : 'h2';
+        const [before, after] = detailHtml(item, heading).split(FX_MARK);
         parts.top.innerHTML = before;
         parts.bottom.innerHTML = after + (extraHtml || '');
         showFx(parts.fx, item);
@@ -596,14 +599,20 @@
         });
     }
 
+    // Wide screens show the pinned or previewed item beside the tiles. On narrow screens
+    // the panel is hidden, except on an item page, where it shows that page's item at the
+    // top of the page (styles.css): that item is the page's content, also for search
+    // engines, which read pages at phone width. Other items still open in the sheet.
+    const inlinePageItem = () => (!WIDE.matches && BY_KEY[PAGE.pageItem] ? PAGE.pageItem : null);
     function renderPanel() {
-        if (!WIDE.matches) return;
-        const key = state.pinned || state.preview || ITEMS.find(item => !isWip(item))?.key;
+        const inline = inlinePageItem();
+        if (!WIDE.matches && !inline) return;
+        const key = inline || state.pinned || state.preview || ITEMS.find(item => !isWip(item))?.key;
         const panel = document.getElementById('detailPanel');
         if (panel.dataset.key === key && !panel.dataset.stale) return;
         panel.dataset.key = key || '';
         delete panel.dataset.stale;
-        renderDetail(panel, key, `<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>`);
+        renderDetail(panel, key, inline ? '' : `<p class="panel-hint">${escapeHtml(t('hintWide'))}</p>`);
         panel.scrollTop = 0;
     }
 
@@ -795,6 +804,10 @@
                 closeSheet();
                 document.getElementById('detailPanel').dataset.stale = '1';
                 renderPanel();
+            } else if (inlinePageItem()) {
+                // An item page's panel turns back into its own item at the top.
+                document.getElementById('detailPanel').dataset.stale = '1';
+                renderPanel();
             }
             markCurrent();
             updateTitle();
@@ -857,7 +870,8 @@
         if (route()) return;
         const hashKey = decodeURIComponent(location.hash.slice(1));
         if (BY_KEY[hashKey]) select(hashKey);
-        else if (BY_KEY[PAGE.pageItem]) select(PAGE.pageItem, true);
+        // On a narrow screen the page item is already shown at the top, not in the sheet.
+        else if (BY_KEY[PAGE.pageItem] && WIDE.matches) select(PAGE.pageItem, true);
     }
 
     window.ConchBlessing = {
@@ -872,7 +886,7 @@
             ITEMS, GROUPS, isWip, isPocket, itemSlug, itemHref, itemName, itemTitle, effects, localized, t, groupsHtml,
             itemText, catalogHtml, kindText,
             setLanguage(language) { state.language = language; },
-            detailHtml: item => detailHtml(item).split(FX_MARK).join(''),
+            detailHtml: (item, heading) => detailHtml(item, heading).split(FX_MARK).join(''),
             defaultKey: () => ITEMS.find(item => !isWip(item))?.key
         });
         return;

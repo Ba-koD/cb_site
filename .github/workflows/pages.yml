@@ -64,7 +64,7 @@ jobs:
         run: |
           rm -rf build && mkdir -p build
           # 1) UI 고정 파일(cb_site 소유)
-          cp -v index.html styles.css texts.js script.js favicon.ico build/
+          cp -v index.html styles.css texts.js script.js favicon.ico favicon-192.png build/
           # 2) 이미지(conch_blessing → build)
           mkdir -p build/resources/gfx/items/collectibles build/resources/gfx/items/trinkets
           rsync -a --delete source/resources/gfx/items/collectibles/ build/resources/gfx/items/collectibles/

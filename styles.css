@@ -255,6 +255,13 @@ a.tile { color: inherit; text-decoration: none; } /* prerendered pages' tiles ar
     padding: 18px;
 }
 @media (min-width: 900px) { .panel { display: block; } }
+/* An item page shows its own item at the top on narrow screens, where the panel is
+   otherwise hidden: that item is the page's content, also for search engines, which
+   read pages at phone width. Other items still open in the sheet. */
+@media (max-width: 899px) {
+    html[data-page-item] .panel { display: block; order: -1; position: static; max-height: none; overflow: visible; }
+    .panel-hint { display: none; }
+}
 .panel-hint { margin-top: 16px; font-size: 12.5px; color: var(--faint); }
 
 .d-head { display: flex; gap: 14px; align-items: center; }
@@ -265,7 +272,7 @@ a.tile { color: inherit; text-decoration: none; } /* prerendered pages' tiles ar
 }
 .d-icon img { width: 64px; height: 64px; }
 .d-title { min-width: 0; }
-.d-title h2 { font-size: 21px; line-height: 1.25; font-weight: 800; overflow-wrap: anywhere; }
+.d-title h1, .d-title h2 { font-size: 21px; line-height: 1.25; font-weight: 800; overflow-wrap: anywhere; }
 .d-sub { color: var(--muted); font-size: 13px; }
 .badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
 .badge {
