@@ -320,7 +320,7 @@ const fs = require('node:fs');
     assert.ok(raw.includes('<html lang="ko" data-page-lang="kr" data-page-item="KRONOS">'));
     assert.ok(raw.includes('<h1>크로노스</h1>') && raw.includes('href="items/live-eye/"'), 'item detail (as the h1) and tile links in the HTML');
     await seoPage.goto(`${base}items/kronos/`, { waitUntil: 'networkidle' });
-    assert.equal(await seoPage.title(), '크로노스 (Kronos) - 소라고둥의 축복 - 아이템 도감');
+    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 - 아이템 도감');
     assert.equal(await seoPage.locator('#detailPanel h1').textContent(), '크로노스');
     assert.equal(new URL(seoPage.url()).pathname, '/items/kronos/', 'opening the page item keeps the address');
     // Phone width (how search engines read pages): the item is the top of the page,
@@ -331,12 +331,12 @@ const fs = require('node:fs');
     assert.ok(await seoPage.locator('#detailPanel h1').isVisible(), 'page item visible at phone width');
     assert.ok(await seoPage.evaluate(() => document.getElementById('detailPanel').getBoundingClientRect().top
         < document.querySelector('.codex').getBoundingClientRect().top), 'page item above the tiles');
-    assert.equal(await seoPage.title(), '크로노스 (Kronos) - 소라고둥의 축복 - 아이템 도감');
+    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 - 아이템 도감');
     assert.equal(await seoPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await seoPage.locator('.tile[data-key="LIVE_EYE"]').click();
     assert.equal(await seoPage.locator('#dialogBody h2').textContent(), '살아있는 눈', 'other items open in the sheet');
     await seoPage.locator('#dialogClose').click();
-    assert.equal(await seoPage.title(), '크로노스 (Kronos) - 소라고둥의 축복 - 아이템 도감', 'closing the sheet returns to the page item');
+    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 - 아이템 도감', 'closing the sheet returns to the page item');
     await seoPage.setViewportSize({ width: 1280, height: 900 });
     await seoPage.goto(`${base}en/items/f-minus/`, { waitUntil: 'networkidle' });
     assert.equal(await seoPage.locator('#detailPanel h1').textContent(), 'F -');
@@ -344,7 +344,7 @@ const fs = require('node:fs');
     assert.equal(await evolution.getAttribute('href'), 'en/items/c-minus/');
     await evolution.click();
     assert.equal(await seoPage.locator('#detailPanel h2').textContent(), 'C -', 'a plain click selects in place');
-    assert.ok((await seoPage.title()).startsWith('C - - Conch'));
+    assert.ok((await seoPage.title()).startsWith('C - | Conch'));
     for (const file of ['robots.txt', 'sitemap.xml', 'llms.txt', 'llms-full.txt', 'en/llms-full.txt', 'favicon-192.png']) {
         assert.equal((await seoPage.request.get(`${base}${file}`)).status(), 200, file);
     }

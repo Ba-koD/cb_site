@@ -90,11 +90,12 @@
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const localized = (item, field) => (item[field] && (item[field][lang()] ?? item[field].en)) || '';
     const itemName = item => localized(item, 'names') || item.key;
-    // "크로노스 (Kronos) - 소라고둥의 축복 - 아이템 도감": the other language's name helps searches.
+    // "크로노스 (Kronos) | 소라고둥의 축복 - 아이템 도감": the other language's name helps searches.
+    // A bar, not a dash, ends the item part, since names such as "B -" end in a dash.
     const itemTitle = item => {
         const name = itemName(item);
         const other = item.names && item.names[lang() === 'kr' ? 'en' : 'kr'];
-        return `${name}${other && other !== name ? ` (${other})` : ''} - ${t('pageTitle')}`;
+        return `${name}${other && other !== name ? ` (${other})` : ''} | ${t('pageTitle')}`;
     };
     const effects = item => {
         const lines = item.eids && (item.eids[lang()] || item.eids.en);
