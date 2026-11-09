@@ -11,7 +11,7 @@
     --line-strong: #57483d;
     --text: #efe6da;
     --muted: #a8998a;
-    --faint: #7a6c60;
+    --faint: #9a8b7d; /* at least 4.5:1 on every background, WIP marks included */
     --accent: #f0b36b;
     --accent-ink: #2a1a0a;
     --pos: #74d38a;
@@ -34,7 +34,9 @@ html { -webkit-text-size-adjust: 100%; }
 body {
     background: var(--bg);
     color: var(--text);
-    font: 15px/1.6 'Noto Sans KR', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    /* System fonts only: a web font that arrives late moves the page (PageSpeed CLS,
+       2026-11-09). Android's own Korean font is Noto Sans CJK KR. */
+    font: 15px/1.6 'Noto Sans KR', 'Noto Sans CJK KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, -apple-system, 'Segoe UI', sans-serif;
     min-height: 100dvh;
     display: flex;
     flex-direction: column;

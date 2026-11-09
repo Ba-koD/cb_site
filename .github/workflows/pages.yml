@@ -96,6 +96,11 @@ jobs:
           echo "Build ID: ${BUILD_ID}"
           echo "Build tree:" && find build -maxdepth 3 -type f | sort
 
+      # Several 32x32 item icons carry about 80 KB of Photoshop metadata each;
+      # the page needs only their pixels (PageSpeed, 2026-11-09: about 600 KiB).
+      - name: Optimize images
+        run: python3 optimize_images.py build
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

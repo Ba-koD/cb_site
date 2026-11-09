@@ -224,11 +224,16 @@
     }
 
     // ---------- grid ----------
-    function renderFlags() {
-        const options = ['all', ...FLAGS];
-        document.getElementById('flagChips').innerHTML = options.map(flag =>
+    // The static pages carry these chips too, so the row never appears late and
+    // pushes the grid down (PageSpeed counted that as a layout shift).
+    function flagsHtml() {
+        return ['all', ...FLAGS].map(flag =>
             `<button type="button" class="chip" data-flag="${flag}" style="--flag:${flagColor(flag)}" aria-pressed="${state.flag === flag}">${escapeHtml(t(flag === 'all' ? 'allFlags' : flag))}</button>`
         ).join('');
+    }
+
+    function renderFlags() {
+        document.getElementById('flagChips').innerHTML = flagsHtml();
     }
 
     // Each option shows how many items it covers on its own; options no item has are left out.
@@ -891,7 +896,7 @@
     if (window.CB_PRERENDER) {
         Object.assign(window.CB_PRERENDER, {
             ITEMS, GROUPS, isWip, isPocket, itemSlug, itemHref, itemName, itemTitle, effects, localized, t, groupsHtml,
-            itemText, catalogHtml, kindText,
+            itemText, catalogHtml, kindText, flagsHtml,
             setLanguage(language) { state.language = language; },
             detailHtml: (item, heading) => detailHtml(item, heading).split(FX_MARK).join(''),
             defaultKey: () => ITEMS.find(item => !isWip(item))?.key
