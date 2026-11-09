@@ -284,6 +284,7 @@ a.tile { color: inherit; text-decoration: none; } /* prerendered pages' tiles ar
 .badge.positive { color: var(--pos); background: rgba(116, 211, 138, .12); }
 .badge.neutral { color: var(--neu); background: rgba(232, 196, 92, .12); }
 .badge.negative { color: var(--neg); background: rgba(236, 111, 102, .12); }
+.badge.console { color: #9fb0c8; background: rgba(159, 176, 200, .14); }
 .stars { color: var(--accent); letter-spacing: 1px; font-size: 12px; }
 .stars i { color: var(--line-strong); font-style: normal; }
 .d-quote { margin: 14px 0 0; color: var(--muted); font-style: italic; }

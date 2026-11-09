@@ -541,6 +541,10 @@ def parse_lua_file(file_path):
             item_info['hidden'] = hidden_match.group(1) == 'true'
             print(f"  Hidden: {item_info['hidden']}")
 
+        # extract console: console-only items (Inf D6, Azure Dragon) are hidden, in
+        # no pool and no Magic Conch result; the site lists them on their own.
+        item_info['console'] = re.search(r'\bconsole\s*=\s*true', item_data) is not None
+
         # extract stackable: whether more copies change the item's effect (the
         # registry marks only the ones that do; actives never stack). For a trinket
         # this counts more copies only; golden copies and Mom's Box are their own fact.
@@ -970,6 +974,8 @@ const items = {
         soulhearts: {item_info.get('soulhearts', 0)},
         origin: {origin_js},
         flag: {flag_js}"""
+            if item_info.get('console'):
+                js_content += ",\n        console: true"
             if item_info.get('fx'):
                 js_content += f",\n        fx: {json.dumps(item_info['fx'])}"
 

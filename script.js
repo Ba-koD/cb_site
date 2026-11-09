@@ -45,11 +45,15 @@
     })();
     // Cards and runes are additions to the game, not Magic Conch results.
     const isPocket = item => item.pocket === true;
+    // Console-only items (the registry's console = true): hidden, in no pool and no
+    // Magic Conch result, so a run never offers them. They get their own group.
+    const isConsole = item => item.console === true;
     const GROUPS = [
-        { id: 'collectibles', text: 'groupCollectibles', test: item => !isWip(item) && !isPocket(item) && item.type !== 'familiar' && item.type !== 'trinket' },
-        { id: 'familiars', text: 'groupFamiliars', test: item => !isWip(item) && item.type === 'familiar' },
-        { id: 'trinkets', text: 'groupTrinkets', test: item => !isWip(item) && item.type === 'trinket' },
+        { id: 'collectibles', text: 'groupCollectibles', test: item => !isWip(item) && !isPocket(item) && !isConsole(item) && item.type !== 'familiar' && item.type !== 'trinket' },
+        { id: 'familiars', text: 'groupFamiliars', test: item => !isWip(item) && !isConsole(item) && item.type === 'familiar' },
+        { id: 'trinkets', text: 'groupTrinkets', test: item => !isWip(item) && !isConsole(item) && item.type === 'trinket' },
         { id: 'pockets', text: 'groupPockets', test: item => !isWip(item) && isPocket(item) },
+        { id: 'console', text: 'groupConsole', test: item => !isWip(item) && isConsole(item) },
         { id: 'wip', text: 'groupWip', test: isWip }
     ];
 
@@ -400,6 +404,7 @@
                     ${otherName && otherName !== name ? `<p class="d-sub">${escapeHtml(otherName)}</p>` : ''}
                     <div class="badges">
                         <span class="badge">${escapeHtml(kindText(item))}</span>
+                        ${isConsole(item) ? `<span class="badge console" title="${escapeHtml(t('consoleSource'))}">${escapeHtml(t('consoleBadge'))}</span>` : ''}
                         ${item.flag ? `<span class="badge flag ${escapeHtml(item.flag)}" title="${escapeHtml(t('flagDesc_' + item.flag))}">${escapeHtml(t(item.flag))}</span>` : ''}
                         ${!isWip(item) && item.type !== 'trinket' ? stars(item.quality) : ''}
                     </div>
@@ -416,8 +421,9 @@
         const goldenHtml = golden.length
             ? `<section class="d-section d-golden"><h3>${escapeHtml(t('goldenEffects'))}</h3><dl class="facts">${golden
                 .map(([label, lines]) => `<dt>${escapeHtml(label)}</dt><dd>${lines.map(escapeHtml).join('<br>')}</dd>`).join('')}</dl></section>` : '';
-        const obtainHtml = isPocket(item)
-            ? `<section class="d-section d-obtain"><h3>${escapeHtml(t('obtain'))}</h3><p class="path-note">${escapeHtml(t('pocketSource_' + item.type))}</p></section>` : '';
+        const obtainText = isPocket(item) ? t('pocketSource_' + item.type) : isConsole(item) ? t('consoleSource') : '';
+        const obtainHtml = obtainText
+            ? `<section class="d-section d-obtain"><h3>${escapeHtml(t('obtain'))}</h3><p class="path-note">${escapeHtml(obtainText)}</p></section>` : '';
 
         const origin = originOf(item);
         const children = CHILDREN[item.key] || [];
@@ -475,7 +481,7 @@
         return Object.assign(text, {
             effects: effects(item).filter(line => line.trim()),
             golden: goldenRows(item),
-            obtain: isPocket(item) ? t('pocketSource_' + item.type) : '',
+            obtain: isPocket(item) ? t('pocketSource_' + item.type) : isConsole(item) ? t('consoleSource') : '',
             upgrade: origin && FLAGS.includes(item.flag) ? [pathText(origin, item)] : [],
             upgradeResults: (CHILDREN[item.key] || []).map(child => pathText({ own: item }, child)),
             evolvesFrom: (EVOLUTION_SOURCES[item.key] || []).map(route => evolutionText(route.source, item, route.conditions)),

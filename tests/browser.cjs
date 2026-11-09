@@ -160,6 +160,29 @@ const fs = require('node:fs');
     await page.locator('#searchInput').fill('');
     console.log('PASS rune group, added-not-upgraded note, effects, icon and search');
 
+    // Console-only items: their own group, a badge and the console note.
+    const consoleItems = await page.evaluate(() => ['INF_D6', 'AZURE_DRAGON'].map(key => {
+        window.ConchBlessing.select(key);
+        return {
+            key,
+            group: document.querySelector(`.tile[data-key="${key}"]`)?.closest('.group')?.dataset.group,
+            badge: document.querySelector('#detailPanel .badges .badge.console')?.textContent || '',
+            obtain: document.querySelector('#detailPanel .d-obtain')?.textContent || ''
+        };
+    }));
+    for (const item of consoleItems) {
+        assert.equal(item.group, 'console', `${item.key} is not in the console group`);
+        assert.equal(item.badge, '콘솔 전용', `${item.key} has no console badge`);
+        assert.ok(item.obtain.includes('디버그 콘솔'), `${item.key} lacks the console note`);
+    }
+    const consoleGroup = await page.evaluate(() => [...document.querySelectorAll('.group[data-group="console"] .tile')]
+        .map(tile => tile.dataset.key).sort().join(','));
+    assert.equal(consoleGroup, 'AZURE_DRAGON,INF_D6', 'only console items are in the console group');
+    await page.evaluate(() => window.ConchBlessing.select('TYRFING'));
+    assert.equal(await page.evaluate(() => document.querySelector('.tile[data-key="TYRFING"]')?.closest('.group')?.dataset.group),
+        'collectibles', 'a hidden item that a run can still give stays with the collectibles');
+    console.log('PASS console-only group, badge and note; hidden run items stay put');
+
     // Stacking (more copies) and golden/Mom's Box are separate facts; runes have neither,
     // and only trinkets have the golden one.
     const factOf = (label) => page.evaluate(([label, keys]) => Object.fromEntries(keys.map(key => {
