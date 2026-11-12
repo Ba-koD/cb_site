@@ -5,13 +5,13 @@ const texts = {
         pageTitle: "Conch's Blessing - Item Codex",
         // Search results and link previews (prerender.cjs).
         siteName: "Conch's Blessing",
-        metaHome: "Item codex for Conch's Blessing, a mod for The Binding of Isaac: Repentance. Every item, trinket, card and rune with its effects, synergies and Magic Conch upgrade path, in English and Korean.",
+        metaHome: "Item codex for Conch's Blessing, a mod for The Binding of Isaac: Repentance+. Every item, trinket, card and rune with its effects, synergies and Magic Conch upgrade path, in English and Korean.",
         metaItem: "{text} · {kind} item in Conch's Blessing, a Binding of Isaac mod",
         subtitle: "Item Codex",
         workshop: "Steam Workshop",
         languageLabel: "Language",
         autoDetect: "Auto ({lang})",
-        introText: "When the Magic Conch answers, matching item pedestals in the room transform into the item for that answer.",
+        introText: "Conch's Blessing (소라고둥의 축복) is a mod for The Binding of Isaac: Repentance+. When the Magic Conch answers, items evolve into new items that match the answer. This site is the codex of every item's effect and evolution.",
         required: "Requires",
 
         searchPlaceholder: "Search names, effects, or origin items",
@@ -107,13 +107,13 @@ const texts = {
         pageTitle: "소라고둥의 축복 - 아이템 도감",
         // 검색 결과와 링크 미리보기 (prerender.cjs).
         siteName: "소라고둥의 축복",
-        metaHome: "아이작의 번제(The Binding of Isaac: Repentance) 모드 소라고둥의 축복(Conch's Blessing)의 아이템 도감. 모든 아이템·장신구·카드·룬의 효과, 시너지, 마법의 소라고둥 강화 경로를 한국어와 영어로 볼 수 있습니다.",
+        metaHome: "아이작의 번제(The Binding of Isaac: Repentance+) 모드 소라고둥의 축복(Conch's Blessing)의 아이템 도감. 모든 아이템·장신구·카드·룬의 효과, 시너지, 마법의 소라고둥 강화 경로를 한국어와 영어로 볼 수 있습니다.",
         metaItem: "{text} · 아이작의 번제 모드 소라고둥의 축복 {kind} 아이템",
         subtitle: "아이템 도감",
         workshop: "스팀 창작마당",
         languageLabel: "언어",
         autoDetect: "자동 ({lang})",
-        introText: "마법의 소라고둥이 대답하면, 방 안의 해당 받침대 아이템이 그 대답에 맞는 아이템으로 바뀝니다.",
+        introText: "소라고둥의 축복(Conch's Blessing)은 아이작의 번제: 리펜턴스+ 모드입니다. 마법의 소라고둥이 대답하면 아이템이 대답에 맞는 새 아이템으로 진화합니다. 이 사이트는 모든 아이템의 효과와 진화 경로를 정리한 도감입니다.",
         required: "필수 모드",
 
         searchPlaceholder: "이름, 효과, 원본 아이템으로 검색",
