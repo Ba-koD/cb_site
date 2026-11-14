@@ -363,15 +363,50 @@
         }).join('');
     }
 
-    // Golden and Mom's Box usually do the same; then they share one row.
-    function goldenRows(item) {
+    // A trinket's golden / Mom's Box states, each with the effect lines it changes.
+    // Golden and Mom's Box usually do the same; then they share one state.
+    function goldenStates(item) {
         const golden = item.golden && (item.golden[lang()] || item.golden.en);
         if (!golden) return [];
         const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-        const rows = same(golden.golden, golden.momsBox)
-            ? [['golden_either', golden.golden], ['golden_both', golden.both]]
-            : [['golden_golden', golden.golden], ['golden_momsBox', golden.momsBox], ['golden_both', golden.both]];
-        return rows.filter(([, lines]) => lines && lines.length).map(([label, lines]) => [t(label), lines]);
+        const states = same(golden.golden, golden.momsBox)
+            ? [['either', golden.golden], ['both', golden.both]]
+            : [['golden', golden.golden], ['momsBox', golden.momsBox], ['both', golden.both]];
+        return states.filter(([, lines]) => lines && lines.length);
+    }
+    const goldenRows = item => goldenStates(item).map(([state, lines]) => [t('golden_' + state), lines]);
+
+    // The effect list in one golden / Mom's Box state, as EID shows it in game: an
+    // effect line that reads the same with its numbers blanked out takes the
+    // state's line, with only the numbers that changed in gold; a state's line with
+    // no such counterpart (an `append` line) is new and added at the end, all gold.
+    const NUMBER = /(?<!\d)(?<!\d\.)\d+(?:\.\d+)?(?!\.?\d)/g;
+    const blanked = line => line.replace(NUMBER, '#');
+    const gold = text => `<span class="gold">${escapeHtml(text)}</span>`;
+    function changedNumbersHtml(line, before) {
+        const old = before.match(NUMBER) || [];
+        let html = '', last = 0, n = 0;
+        for (const match of line.matchAll(NUMBER)) {
+            html += escapeHtml(line.slice(last, match.index));
+            html += match[0] === old[n++] ? escapeHtml(match[0]) : gold(match[0]);
+            last = match.index + match[0].length;
+        }
+        return html + escapeHtml(line.slice(last));
+    }
+    function effectItemsHtml(lines, stateLines = []) {
+        const html = lines.map(escapeHtml);
+        const used = new Set();
+        const added = [];
+        for (const line of stateLines) {
+            const at = lines.findIndex((other, i) => !used.has(i) && blanked(other) === blanked(line));
+            if (at < 0) {
+                added.push(gold(line));
+                continue;
+            }
+            used.add(at);
+            html[at] = changedNumbersHtml(line, lines[at]);
+        }
+        return html.concat(added).map(text => `<li>${text}</li>`).join('');
     }
 
     // The details rows: [label, text], or [label, [chips]] for lists.
@@ -419,13 +454,17 @@
             return `${head}<p class="d-quote">${escapeHtml(t('wipText'))}</p>`;
         }
 
+        // A trinket that golden copies or Mom's Box change switches its effect list
+        // between those states in place (the buttons beside the heading).
         const lines = effects(item);
+        const states = goldenStates(item);
+        const stateTabs = states.length
+            ? `<div class="golden-tabs" role="group" aria-label="${escapeHtml(t('goldenEffects'))}">${[['base'], ...states].map(([state], i) =>
+                `<button type="button" class="chip" data-golden-state="${state}" aria-pressed="${i === 0}">${escapeHtml(t('goldenTab_' + state))}</button>`).join('')}</div>` : '';
+        const effectLists = [`<ul class="d-effects" data-golden-list="base">${effectItemsHtml(lines)}</ul>`]
+            .concat(states.map(([state, stateLines]) => `<ul class="d-effects" data-golden-list="${state}" hidden>${effectItemsHtml(lines, stateLines)}</ul>`));
         const effectsHtml = lines.length
-            ? `<section class="d-section"><h3>${escapeHtml(t('effects'))}</h3><ul class="d-effects">${lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></section>` : '';
-        const golden = goldenRows(item);
-        const goldenHtml = golden.length
-            ? `<section class="d-section d-golden"><h3>${escapeHtml(t('goldenEffects'))}</h3><dl class="facts">${golden
-                .map(([label, lines]) => `<dt>${escapeHtml(label)}</dt><dd>${lines.map(escapeHtml).join('<br>')}</dd>`).join('')}</dl></section>` : '';
+            ? `<section class="d-section d-effects-section"><div class="d-section-head"><h3>${escapeHtml(t('effects'))}</h3>${stateTabs}</div>${effectLists.join('')}</section>` : '';
         const obtainText = isPocket(item) ? t('pocketSource_' + item.type) : isConsole(item) ? t('consoleSource') : '';
         const obtainHtml = obtainText
             ? `<section class="d-section d-obtain"><h3>${escapeHtml(t('obtain'))}</h3><p class="path-note">${escapeHtml(obtainText)}</p></section>` : '';
@@ -461,7 +500,7 @@
 
         return `${head}
             ${description ? `<p class="d-quote">“${escapeHtml(description)}”</p>` : ''}
-            ${effectsHtml}${goldenHtml}${obtainHtml}${upgradeHtml}${FX_MARK}${childrenHtml}${evolutionHtml}${factsHtml}
+            ${effectsHtml}${obtainHtml}${upgradeHtml}${FX_MARK}${childrenHtml}${evolutionHtml}${factsHtml}
             <div class="d-actions"><button type="button" class="button ghost" data-copy-link="${escapeHtml(item.key)}">${escapeHtml(t('copyLink'))}</button></div>${synergyHtml}`;
     }
 
@@ -731,6 +770,14 @@
 
         // Links inside a detail (origin, evolutions, synergy items) and the copy-link button.
         document.addEventListener('click', event => {
+            const stateTab = event.target.closest('[data-golden-state]');
+            if (stateTab) {
+                const section = stateTab.closest('.d-section');
+                const state = stateTab.dataset.goldenState;
+                section.querySelectorAll('[data-golden-state]').forEach(tab => tab.setAttribute('aria-pressed', String(tab === stateTab)));
+                section.querySelectorAll('[data-golden-list]').forEach(list => { list.hidden = list.dataset.goldenList !== state; });
+                return;
+            }
             const goto = event.target.closest('[data-goto]');
             if (goto) {
                 // A modified click (new tab or window) follows the link to the item's page.

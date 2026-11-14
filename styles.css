@@ -297,6 +297,13 @@ a.tile { color: inherit; text-decoration: none; } /* prerendered pages' tiles ar
 .d-effects li { position: relative; padding: 5px 0 5px 16px; }
 .d-effects li + li { border-top: 1px dashed rgba(255, 255, 255, .06); }
 .d-effects li::before { content: ""; position: absolute; left: 2px; top: 14px; width: 6px; height: 6px; border-radius: 2px; background: var(--accent); }
+/* A trinket's golden / Mom's Box states switch the effect list in place; what a
+   state changes is gold, as EID shows it in game. */
+.d-section-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; }
+.d-section-head h3 { margin-bottom: 0; margin-right: auto; }
+.golden-tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+.golden-tabs .chip { font-size: 12px; padding: 2px 9px; }
+.d-effects .gold { color: #ffcf3f; font-weight: 700; }
 
 .path { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
 .path .arrow { color: var(--faint); }

@@ -196,19 +196,33 @@ const fs = require('node:fs');
         TIME_POWER: '효과 있음', ATROPOS: '효과 없음', ANGELS_CROWN: '효과 있음', THURISAZ: null });
     console.log('PASS stacking and golden/Mom\'s Box are separate facts (golden on trinkets only), none on runes');
 
-    // The golden/Mom's Box section: one row when both do the same, then both together.
-    const goldenRows = key => page.evaluate(key => {
+    // Golden / Mom's Box switch the effect list in place: one state when both do the
+    // same, then both together. Only what a state changes is gold: the changed
+    // numbers, or a whole new (`append`) line.
+    const goldenStates = key => page.evaluate(key => {
         window.ConchBlessing.select(key);
-        return [...document.querySelectorAll('#detailPanel .d-golden dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]);
+        const section = document.querySelector('#detailPanel .d-effects-section');
+        return [...section.querySelectorAll('[data-golden-state]')].map(tab => {
+            tab.click();
+            const shown = [...section.querySelectorAll('[data-golden-list]')].filter(list => !list.hidden);
+            return [tab.textContent, tab.getAttribute('aria-pressed'), shown.length,
+                [...shown[0].querySelectorAll('.gold')].map(span => span.textContent)];
+        });
     }, key);
-    assert.deepEqual(await goldenRows('ANGELS_CROWN'), [
-        ['황금 또는 엄마의 상자', '25% 확률로 축복받은 보물방이 되어 천사방 아이템 1개와 영원한 하트가 추가됩니다.'],
-        ['황금 + 엄마의 상자', '33% 확률로 축복받은 보물방이 되어 천사방 아이템 1개와 영원한 하트가 추가됩니다.']]);
-    assert.deepEqual(await goldenRows('TIME_POWER'), [
-        ['황금 또는 엄마의 상자', '소지 중 초당 공격력이 0.012 증가합니다.'],
-        ['황금 + 엄마의 상자', '소지 중 초당 공격력이 0.018 증가합니다.']]);
-    assert.deepEqual(await goldenRows('ATROPOS'), []);
-    console.log('PASS golden/Mom\'s Box effect section from the EID specials');
+    assert.deepEqual(await goldenStates('WRONG_ANSWER_NOTE'), [
+        ['기본', 'true', 1, []],
+        ['황금·엄마의 상자', 'true', 1, ['100', '50']],
+        ['둘 다', 'true', 1, ['150', '75']]]);
+    assert.deepEqual(await goldenStates('ANGELS_CROWN'), [
+        ['기본', 'true', 1, []],
+        ['황금·엄마의 상자', 'true', 1, ['25% 확률로 축복받은 보물방이 되어 천사방 아이템 1개와 영원한 하트가 추가됩니다.']],
+        ['둘 다', 'true', 1, ['33% 확률로 축복받은 보물방이 되어 천사방 아이템 1개와 영원한 하트가 추가됩니다.']]]);
+    assert.deepEqual(await goldenStates('TIME_POWER'), [
+        ['기본', 'true', 1, []],
+        ['황금·엄마의 상자', 'true', 1, ['0.012']],
+        ['둘 다', 'true', 1, ['0.018']]]);
+    assert.deepEqual(await goldenStates('ATROPOS'), []);
+    console.log('PASS golden/Mom\'s Box states switch the effect list, changes in gold');
 
     // A quality icon in the EID stands in for its grade, so the effect text keeps the digit.
     await page.evaluate(() => window.ConchBlessing.select('CONCH_PEARL'));

@@ -176,15 +176,102 @@ def scale_numbers(line, numbers, factor):
         return f"{Decimal(token) * factor:.{places}f}"
     return NUMBER_TOKEN.sub(scaled, line)
 
-def golden_effects(eids, numbers, appends):
+# The per-state form (`specials = { normal = { 100, 50 }, moms_box = { 100, 50 },
+# both = { 150, 75 } }`) lists, for golden / Mom's Box / both, the numbers that
+# replace the EID text's numbers in text order. The mod registers it with EID
+# through replaceNumbersInOrder (scripts/eid_language.lua), whose Lua pattern
+# "%d*%.?%d+" this mirrors. In game every icon token is already
+# "{{Collectible<id>}}"/"{{Trinket<id>}}"/"{{Card<id>}}", so its id takes a turn.
+STATE_NUMBER = re.compile(r'\{(?:c|t|card|own):[^{}]+\}|[0-9]*\.?[0-9]+')
+SPECIAL_STATES = (('golden', 'normal'), ('momsBox', 'moms_box'), ('both', 'both'))
+
+def lua_number_text(value):
+    """A number as Lua 5.3's tostring writes it: 100 -> "100", 2.0 -> "2.0"."""
+    if isinstance(value, str):
+        value = float(value) if re.search(r'[.eE]', value) else int(value)
+    if isinstance(value, int):
+        return str(value)
+    text = '%.14g' % value
+    return text if re.search(r'[.eEn]', text) else text + '.0'
+
+def state_specials(lang, lang_specials, item_states):
+    """golden/momsBox/both -> numbers for one language, picked as the mod picks
+    them when it registers the text with EID: the language's own locale specials,
+    else English's, each state else ItemData's; Mom's Box falls back to the golden
+    numbers and both to Mom's Box. None unless Mom's Box or both has its own list
+    (with `normal` alone it is the base-number form, scaled instead)."""
+    own = lang_specials.get(lang) or lang_specials.get('en') or {}
+    def pick(key):
+        value = own.get(key)
+        return value if value is not None else item_states.get(key)
+    golden, box, both = pick('normal'), pick('moms_box'), pick('both')
+    if pick('append') or not isinstance(golden, list) \
+            or not (isinstance(box, list) or isinstance(both, list)):
+        return None
+    box = box if isinstance(box, list) else golden
+    both = both if isinstance(both, list) else box
+    return {'golden': golden, 'momsBox': box, 'both': both}
+
+def replaced_state_lines(raw_lines, values):
+    """The EID lines that change when `values` replace the description's numbers
+    in order across all of its lines, cleaned as the site shows them."""
+    turn = 0
+    def replace(match):
+        nonlocal turn
+        token = match.group(0)
+        value = values[turn] if turn < len(values) else None
+        turn += 1
+        return token if token.startswith('{') or value is None else lua_number_text(value)
+    changed = []
+    for line in raw_lines:
+        if not isinstance(line, str):
+            continue
+        new = STATE_NUMBER.sub(replace, line)
+        if DYNAMIC_TOKEN.search(line):
+            continue
+        old_text, new_text = clean_locale_line(line), clean_locale_line(new)
+        if new_text and new_text != old_text:
+            changed.append(new_text)
+    return changed
+
+def parse_state_specials(item_data):
+    """ItemData's per-state `normal`/`moms_box`/`both` number lists, as the number
+    texts the source writes; empty unless Mom's Box or both has its own list."""
+    start = re.search(r'\bspecials\s*=\s*\{', item_data)
+    if not start:
+        return {}
+    end = find_matching_brace(item_data, start.end() - 1)
+    if end == -1:
+        return {}
+    body = item_data[start.end():end]
+    states = {}
+    for key in ('normal', 'moms_box', 'both'):
+        match = re.search(rf'\b{key}\s*=\s*\{{([^{{}}]*)\}}', body)
+        if match:
+            states[key] = re.findall(r'-?[0-9]*\.?[0-9]+', match.group(1))
+    return states if ('moms_box' in states or 'both' in states) else {}
+
+def golden_effects(eids, numbers, appends, raw_eids=None, lang_specials=None, item_states=None):
     """lang -> {golden, momsBox, both: [lines]}: a trinket's own golden/Mom's Box
-    lines (EID `specials.append`, in that order) or its effect lines with the
-    `specials.normal` numbers scaled. Empty when neither changes the trinket."""
+    lines (EID `specials.append`, in that order), its effect lines with the
+    per-state numbers put in place, or its effect lines with the `specials.normal`
+    numbers scaled. Empty when none of them changes the trinket."""
+    raw_eids, lang_specials, item_states = raw_eids or {}, lang_specials or {}, item_states or {}
     effects = {}
     for lang in set(eids) | set(appends):
         lines = appends.get(lang)
         if lines:
             effects[lang] = {state: [lines[min(i, len(lines) - 1)]] for i, (state, _) in enumerate(GOLDEN_STATES)}
+            continue
+        per_state = state_specials(lang, lang_specials, item_states)
+        if per_state:
+            states = {}
+            for state, _ in SPECIAL_STATES:
+                changed = replaced_state_lines(raw_eids.get(lang, []), per_state[state])
+                if changed:
+                    states[state] = changed
+            if states:
+                effects[lang] = states
             continue
         states = {}
         for state, factor in GOLDEN_STATES:
@@ -201,14 +288,18 @@ def apply_locale(items, tables):
     for key, info in items.items():
         working_now = len(info) == 3 and 'names' in info and 'descriptions' in info and 'eids' in info
         names, descriptions, eids, synergies, synergy_types, evolutions = {}, {}, {}, {}, {}, {}
-        golden_appends = {}
+        golden_appends, golden_specials, raw_eids = {}, {}, {}
         for lang, table in tables.items():
             entry = (table.get('items') or {}).get(key)
             if not isinstance(entry, dict):
                 continue
             special = entry.get('specials')
+            if isinstance(special, dict):
+                golden_specials[lang] = special
             if isinstance(special, dict) and isinstance(special.get('append'), list):
                 golden_appends[lang] = [clean_locale_line(line) for line in special['append'] if isinstance(line, str)]
+            if entry.get('eid') is not None:
+                raw_eids[lang] = entry['eid'] if isinstance(entry['eid'], list) else [entry['eid']]
             if isinstance(entry.get('name'), str):
                 names[lang] = entry['name']
             if isinstance(entry.get('description'), str):
@@ -232,12 +323,14 @@ def apply_locale(items, tables):
                     synergy_types[site_key] = target_type
         info.pop('synergy_lines', None)
         golden_numbers = info.pop('golden_numbers', [])
+        golden_states = info.pop('golden_states', {})
         if names:
             info['names'] = names
         if working_now:
             continue
         if info.get('type') == 'trinket':
-            info['golden'] = golden_effects(eids, golden_numbers, golden_appends)
+            info['golden'] = golden_effects(eids, golden_numbers, golden_appends,
+                                            raw_eids, golden_specials, golden_states)
         if descriptions:
             info['descriptions'] = descriptions
         if eids:
@@ -556,7 +649,14 @@ def parse_lua_file(file_path):
         specials_match = re.search(r'\bspecials\s*=\s*\{\s*normal\s*=\s*(\{[^}]*\}|[\d.]+)\s*\}', item_data)
         if specials_match:
             item_info['golden_numbers'] = re.findall(r'\d+(?:\.\d+)?', specials_match.group(1))
-        
+        # The per-state form: the numbers golden / Mom's Box / both put in place of
+        # the EID text's numbers, in order (`specials = { normal = { 100, 50 },
+        # moms_box = { 100, 50 }, both = { 150, 75 } }`). A language's own locale
+        # specials win over these in apply_locale.
+        golden_states = parse_state_specials(item_data)
+        if golden_states:
+            item_info['golden_states'] = golden_states
+
         # extract shopprice
         shopprice_match = re.search(r'shopprice\s*=\s*(\d+)', item_data)
         if shopprice_match:
