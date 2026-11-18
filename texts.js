@@ -118,9 +118,9 @@ const texts = {
         // 메인 제목 (prerender.cjs와 탭 제목이 같은 값을 쓴다: 구글은 렌더링된 제목을 쓴다).
         homeTitle: "아이작 모드 소라고둥의 축복 공식 도감 (Conch's Blessing)",
         pageTitle: "소라고둥의 축복 도감",
-        // 검색 결과와 링크 미리보기 (prerender.cjs).
+        // 검색 결과와 링크 미리보기 (prerender.cjs). 메인 설명은 80자 이내: 네이버는 그 이상을 잘라 보여 준다.
         siteName: "소라고둥의 축복",
-        metaHome: "아이작의 번제(The Binding of Isaac: Repentance+) 모드 소라고둥의 축복(Conch's Blessing)의 공식 아이템 도감. 모든 아이템·장신구·카드·룬의 효과, 시너지, 마법의 소라고둥 강화 경로를 한국어와 영어로 볼 수 있습니다.",
+        metaHome: "아이작의 번제 모드 소라고둥의 축복(Conch's Blessing) 공식 아이템 도감. 모든 아이템의 효과·시너지·강화 경로를 담았습니다.",
         // {name}은 "크로노스 (Kronos)"; 줄이는 건 {text}(인용문과 효과)뿐이다.
         metaItem: "{name}: 아이작의 번제 모드 소라고둥의 축복의 {kind} 아이템. {text}",
         subtitle: "아이템 도감",
