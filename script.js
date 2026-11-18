@@ -6,6 +6,7 @@
 (() => {
     const SUPPORTED_LANGUAGES = ['kr', 'en'];
     const LANGUAGE_STORAGE_KEY = 'conch_blessing_language';
+    const LANGUAGE_HINT_STORAGE_KEY = 'conch_blessing_language_hint';
     const LANGUAGE_NAMES = { kr: '한국어', en: 'English' };
     const WIDE = window.matchMedia('(min-width: 900px)');
     const HOVER = window.matchMedia('(hover: hover)');
@@ -79,28 +80,40 @@
     const normalizeSearch = value => String(value || '').normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
 
     // ---------- state ----------
-    const state = { language: 'auto', detected: 'en', query: '', flag: 'all', filters: {}, pinned: null, preview: null, sheetKey: null };
+    // Every page's language is fixed by its address: the home page / and items/<slug>/
+    // are Korean, en/ and en/items/<slug>/ English. prerender.cjs writes the language
+    // (and an item page's item) on <html>, so search engines, which read pages with an
+    // English browser, index each address in its own language. state.language is the
+    // reader's saved choice ('auto' when there is none); a choice that differs from the
+    // page's language moves to that language's address, never the browser's language.
+    const PAGE = document.documentElement.dataset || {};
+    const PAGE_LANG = SUPPORTED_LANGUAGES.includes(PAGE.pageLang) ? PAGE.pageLang
+        : (String(document.documentElement.lang || '').startsWith('en') ? 'en' : 'kr');
+    const state = { language: 'auto', display: PAGE_LANG, query: '', flag: 'all', filters: {}, pinned: null, preview: null, sheetKey: null };
     const FX_MARK = '<!--fx-->';
 
-    const lang = () => (state.language === 'auto' ? state.detected : state.language);
+    const lang = () => state.display;
     const t = (key, vars) => getText(key, lang(), vars);
     // Every item also has its own page (items/<slug>/, English under en/), written by
-    // prerender.cjs so search engines can read it without running this script. Such a
-    // page names its item and language on <html>; its language is the auto choice there.
-    const PAGE = document.documentElement.dataset || {};
+    // prerender.cjs so search engines can read it without running this script.
     const itemSlug = key => String(key).toLowerCase().replace(/_/g, '-');
     const itemHref = (key, language = lang()) => `${language === 'en' ? 'en/' : ''}items/${itemSlug(key)}/`;
-    const detectLanguage = () => (SUPPORTED_LANGUAGES.includes(PAGE.pageLang) ? PAGE.pageLang : detectAndSetLanguage());
+    // The home page in a language, relative to the site root (pages under en/ set <base>).
+    const homeHref = (language = lang()) => (language === 'en' ? 'en/' : './');
+    // This page in another language, keeping an open item's #KEY.
+    const languageUrl = language => new URL(`${PAGE.pageItem ? itemHref(PAGE.pageItem, language) : homeHref(language)}${location.hash}`, document.baseURI).href;
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const localized = (item, field) => (item[field] && (item[field][lang()] ?? item[field].en)) || '';
     const itemName = item => localized(item, 'names') || item.key;
-    // "크로노스 (Kronos) | 소라고둥의 축복 - 아이템 도감": the other language's name helps searches.
-    // A bar, not a dash, ends the item part, since names such as "B -" end in a dash.
-    const itemTitle = item => {
+    // "티르핑 (Tyrfing)": the other language's name helps searches.
+    const itemLabel = item => {
         const name = itemName(item);
         const other = item.names && item.names[lang() === 'kr' ? 'en' : 'kr'];
-        return `${name}${other && other !== name ? ` (${other})` : ''} | ${t('pageTitle')}`;
+        return `${name}${other && other !== name ? ` (${other})` : ''}`;
     };
+    // "티르핑 (Tyrfing) | 소라고둥의 축복 도감". A bar, not a dash, ends the item part,
+    // since names such as "B -" end in a dash.
+    const itemTitle = item => `${itemLabel(item)} | ${t('pageTitle')}`;
     const effects = item => {
         const lines = item.eids && (item.eids[lang()] || item.eids.en);
         return Array.isArray(lines) ? lines : [];
@@ -205,7 +218,24 @@
         try { return localStorage.getItem(LANGUAGE_STORAGE_KEY); } catch (_) { return null; }
     }
     function storeLanguage(value) {
-        try { localStorage.setItem(LANGUAGE_STORAGE_KEY, value); } catch (_) { /* private mode */ }
+        try {
+            if (value === 'auto') localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+            else localStorage.setItem(LANGUAGE_STORAGE_KEY, value);
+        } catch (_) { /* private mode */ }
+    }
+    // A saved explicit choice; 'auto' (also what older visits saved) means none.
+    function savedLanguage() {
+        const saved = readStoredLanguage();
+        return SUPPORTED_LANGUAGES.includes(saved) ? saved : 'auto';
+    }
+    // An explicit choice that differs from the address moves to this page in that
+    // language. Only a choice the reader made does this: never the browser's language,
+    // since search engines would follow such a move too.
+    function followSavedLanguage() {
+        state.language = savedLanguage();
+        if (state.language === 'auto' || state.language === PAGE_LANG) return false;
+        location.replace(languageUrl(state.language));
+        return true;
     }
 
     // ---------- static texts ----------
@@ -216,11 +246,50 @@
         document.querySelectorAll('[data-placeholder]').forEach(el => { el.placeholder = t(el.dataset.placeholder); });
         document.getElementById('searchClear').setAttribute('aria-label', t('clearSearch'));
         document.getElementById('dialogClose').setAttribute('aria-label', t('close'));
-        // The auto option names the language it detected, so the control reads as a language setting.
-        document.getElementById('autoOption').textContent = t('autoDetect', { lang: LANGUAGE_NAMES[state.detected] || state.detected });
+        // The auto option names the page's language, which it follows.
+        document.getElementById('autoOption').textContent = t('autoDetect', { lang: LANGUAGE_NAMES[lang()] || lang() });
         const frame = document.getElementById('fxFrame');
         frame.title = t(frame.dataset.title);
         document.getElementById('languageSelect').value = state.language;
+    }
+
+    // A reader whose browser prefers the other language, and who has not chosen one,
+    // gets a small link to this page in that language. It floats over the page
+    // (position: fixed), so it never moves the layout, and closing it is remembered.
+    // It never moves the reader by itself: search engines read with an English browser.
+    function languageHintDismissed() {
+        try { return localStorage.getItem(LANGUAGE_HINT_STORAGE_KEY) === 'closed'; } catch (_) { return false; }
+    }
+    function updateLanguageHint() {
+        const other = detectAndSetLanguage();
+        const show = state.language === 'auto' && other !== lang() && SUPPORTED_LANGUAGES.includes(other) && !languageHintDismissed();
+        let hint = document.getElementById('languageHint');
+        if (!show) {
+            if (hint) hint.hidden = true;
+            return;
+        }
+        if (!hint) {
+            hint = document.createElement('aside');
+            hint.id = 'languageHint';
+            hint.className = 'language-hint';
+            hint.innerHTML = '<a class="language-hint-link"></a><button type="button" class="language-hint-close">&times;</button>';
+            // The address is worked out on the click, so an item opened since (#KEY) goes along.
+            hint.querySelector('a').addEventListener('click', event => { event.currentTarget.href = languageUrl(event.currentTarget.lang === 'ko' ? 'kr' : 'en'); });
+            hint.querySelector('button').addEventListener('click', () => {
+                try { localStorage.setItem(LANGUAGE_HINT_STORAGE_KEY, 'closed'); } catch (_) { /* private mode */ }
+                hint.hidden = true;
+            });
+            document.body.appendChild(hint);
+        }
+        // Written in the language it offers, for the reader who prefers that language.
+        const link = hint.querySelector('a');
+        link.lang = other === 'kr' ? 'ko' : 'en';
+        link.hreflang = link.lang;
+        link.href = languageUrl(other);
+        link.textContent = getText('languageHint', other);
+        hint.querySelector('button').setAttribute('aria-label', getText('close', other));
+        hint.setAttribute('aria-label', LANGUAGE_NAMES[other]);
+        hint.hidden = false;
     }
 
     // ---------- grid ----------
@@ -316,10 +385,11 @@
     }
 
     // The tab names the pinned (or open) item, as its prerendered page does; an item
-    // page keeps its own item's name while nothing else is open.
+    // page keeps its own item's name while nothing else is open, and the home page its
+    // prerendered title (homeTitle), which search engines read from the running page.
     function updateTitle() {
         const item = BY_KEY[currentKey()] || BY_KEY[PAGE.pageItem];
-        document.title = item ? itemTitle(item) : t('pageTitle');
+        document.title = item ? itemTitle(item) : t('homeTitle');
     }
 
     // ---------- detail ----------
@@ -700,8 +770,10 @@
     }
 
     // ---------- selection ----------
+    // The path is written out: a bare "#KEY" would resolve against <base> (the site root)
+    // and turn an en/ or item page's address into the Korean home page's.
     function setHash(key) {
-        const url = key ? `#${encodeURIComponent(key)}` : `${location.pathname}${location.search}`;
+        const url = `${location.pathname}${location.search}${key ? `#${encodeURIComponent(key)}` : ''}`;
         history.replaceState(null, '', url);
     }
 
@@ -849,11 +921,23 @@
             filterToggle.focus();
         });
 
+        // Choosing a language saves it and opens this page in that language; "auto" forgets
+        // the choice and keeps the language of the address.
         document.getElementById('languageSelect').addEventListener('change', event => {
             state.language = event.target.value;
-            if (state.language === 'auto') state.detected = detectLanguage();
             storeLanguage(state.language);
-            rerenderAll();
+            if (state.language !== 'auto' && state.language !== PAGE_LANG) {
+                location.replace(languageUrl(state.language));
+                return;
+            }
+            applyTexts();
+            updateLanguageHint();
+        });
+        // A page restored from the back/forward cache runs no script: apply a choice made since.
+        window.addEventListener('pageshow', event => {
+            if (!event.persisted || followSavedLanguage()) return;
+            applyTexts();
+            updateLanguageHint();
         });
 
         // Crossing the breakpoint moves the current item between the sheet and the panel.
@@ -919,12 +1003,11 @@
     }
 
     function init() {
+        if (followSavedLanguage()) return;
         trackTopbarHeight();
-        const saved = readStoredLanguage();
-        state.language = SUPPORTED_LANGUAGES.includes(saved) ? saved : 'auto';
-        state.detected = detectLanguage();
         bindEvents();
         rerenderAll();
+        updateLanguageHint();
 
         if (route()) return;
         const hashKey = decodeURIComponent(location.hash.slice(1));
@@ -942,9 +1025,9 @@
     // from the same markup the codex draws; it never starts the page there.
     if (window.CB_PRERENDER) {
         Object.assign(window.CB_PRERENDER, {
-            ITEMS, GROUPS, isWip, isPocket, itemSlug, itemHref, itemName, itemTitle, effects, localized, t, groupsHtml,
+            ITEMS, GROUPS, isWip, isPocket, itemSlug, itemHref, homeHref, itemName, itemLabel, itemTitle, effects, localized, t, groupsHtml,
             itemText, catalogHtml, kindText, flagsHtml,
-            setLanguage(language) { state.language = language; },
+            setLanguage(language) { state.display = language; },
             detailHtml: (item, heading) => detailHtml(item, heading).split(FX_MARK).join(''),
             defaultKey: () => ITEMS.find(item => !isWip(item))?.key
         });

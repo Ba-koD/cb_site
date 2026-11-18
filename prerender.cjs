@@ -1,27 +1,52 @@
 #!/usr/bin/env node
 // Writes what search engines read, into an assembled site folder (default build/):
-//   index.html               the codex with its tiles and first item already in the HTML
+//   index.html               the codex in Korean with its tiles and first item already in the HTML
+//   en/index.html            the same home page in English
 //   items/<slug>/index.html  each item's own page, Korean
 //   en/items/<slug>/...      the same page in English
+// Every page's language is fixed by its address (data-page-lang on <html>); ko and en
+// alternates link each page to the other, with English as x-default.
 //   sitemap.xml, robots.txt  and any verification files from verification/
 //   llms.txt, llms-full.txt  every item as plain text for AI assistants (English under en/)
 // The pages are the codex itself: script.js runs here with stub globals and draws the
 // same markup it draws in the browser, and on load it takes over the page as usual.
-// Usage: node prerender.cjs [site folder]
+// Search engines also learn which pages changed: page-state.json keeps each sitemap
+// page's content fingerprint and the day it last changed. Given the live site's copy
+// (--previous), a page whose content is unchanged keeps its date, which becomes its
+// sitemap <lastmod>, and --changed lists the pages that did change, which the Pages
+// workflow sends to IndexNow (Bing, which ChatGPT search reads, Naver, Yandex...)
+// after deploying, with the key file written from seo.json's indexNowKey.
+// Usage: node prerender.cjs [site folder] [--previous page-state.json] [--changed changed.txt]
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = __dirname;
-const SITE = path.resolve(process.argv[2] || path.join(ROOT, 'build'));
+// node prerender.cjs [site folder] [--previous page-state.json] [--changed changed.txt]
+const ARGS = (() => {
+    const args = { site: null, previous: null, changed: null };
+    const rest = process.argv.slice(2);
+    for (let i = 0; i < rest.length; i++) {
+        const flag = rest[i];
+        if (flag === '--previous' || flag === '--changed') {
+            if (!rest[i + 1]) { console.error(`prerender: ${flag} needs a file`); process.exit(1); }
+            args[flag.slice(2)] = rest[++i];
+        } else if (!flag.startsWith('--') && !args.site) args.site = flag;
+        else { console.error(`prerender: unknown argument ${flag}`); process.exit(1); }
+    }
+    return args;
+})();
+const SITE = path.resolve(ARGS.site || path.join(ROOT, 'build'));
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'seo.json'), 'utf8'));
 const ORIGIN = String(config.origin || '').replace(/\/+$/, '');
-// kr is the site's language key; ko is the HTML/hreflang code.
+// kr is the site's language key; ko is the HTML/hreflang code. base takes an item page
+// back to the site root, homeBase the home page.
 const LANGUAGES = {
-    kr: { html: 'ko', og: 'ko_KR', dir: '', base: '../../' },
-    en: { html: 'en', og: 'en_US', dir: 'en/', base: '../../../' }
+    kr: { html: 'ko', og: 'ko_KR', dir: '', base: '../../', homeBase: '' },
+    en: { html: 'en', og: 'en_US', dir: 'en/', base: '../../../', homeBase: '../' }
 };
 const SEO_START = '<!-- seo: prerender.cjs replaces this block on every built page -->';
 const SEO_END = '<!-- /seo -->';
@@ -62,6 +87,7 @@ if (!codex.ITEMS.length) fail('items.js has no items');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const t = (key, vars) => codex.t(key, vars);
 const pageUrl = (item, language) => `${ORIGIN}/${LANGUAGES[language].dir}items/${codex.itemSlug(item.key)}/`;
+const homeUrl = language => `${ORIGIN}/${LANGUAGES[language].dir}`;
 const indexable = item => !codex.isWip(item);
 
 // Search results show about 150 characters; cut at a word where there is one.
@@ -83,13 +109,15 @@ function kindOf(item) {
 // EID lines often end without a full stop; joined into one sentence run they need one.
 const sentence = line => (/[.!?…。)\]]$/.test(line.trim()) ? line.trim() : `${line.trim()}.`);
 
+// "티르핑 (Tyrfing): 아이작의 번제 모드 소라고둥의 축복의 패시브 아이템. “인용문” 효과…":
+// the definition comes first and stays whole (no 은/는 after the name, which would depend
+// on it); only the item's own words, its quote and effects, are shortened to fit 160.
 function itemDescription(item) {
     const quote = codex.localized(item, 'descriptions');
     const body = codex.isWip(item) ? t('wipText') : codex.effects(item).filter(line => line.trim()).map(sentence).join(' ');
     const text = [quote ? `“${quote}”` : '', body].filter(Boolean).join(' ');
-    // The item's own words come first; only they are shortened, so the mod line stays whole.
-    const frame = t('metaItem', { kind: kindOf(item), text: '\u0000' });
-    return frame.replace('\u0000', clip(text, 160 - (frame.length - 1)));
+    const frame = t('metaItem', { name: codex.itemLabel(item), kind: kindOf(item), text: '\u0000' });
+    return frame.replace('\u0000', clip(text, 160 - (frame.length - 1))).trim();
 }
 
 // <script> content: a "</script>" inside the data must not end the element.
@@ -146,19 +174,29 @@ const TEMPLATE = (() => {
 
 function renderPage(page) {
     let html = `${TEMPLATE.before}${SEO_START}\n${headBlock(page)}\n    ${SEO_END}${TEMPLATE.after}`;
-    const pageAttributes = page.item
-        ? ` data-page-lang="${page.language}" data-page-item="${escapeHtml(page.item.key)}"` : '';
+    // The address fixes the page's language, the home pages' too: search engines read
+    // with an English browser, so a language picked from the browser would index / in English.
+    const pageAttributes = ` data-page-lang="${page.language}"${page.item ? ` data-page-item="${escapeHtml(page.item.key)}"` : ''}`;
     html = replaceOnce(html, /<html lang="[^"]*">/, `<html lang="${LANGUAGES[page.language].html}"${pageAttributes}>`, '<html lang>');
+    // Links stay in the page's language: the logo and the tabs lead to this language's home
+    // page. Only the home pages make the logo their h1; an item page's h1 is its item.
+    const home = codex.homeHref(page.language);
+    html = replaceOnce(html, /<a class="brand" href="[^"]*">([^]*?)<\/a>/, (_, inner) => {
+        const link = `<a class="brand" href="${home}">${inner}</a>`;
+        return page.item ? link : `<h1 class="brand-title">${link}</h1>`;
+    }, 'logo link');
+    const tabs = html.match(/<a class="tab" href="[^"]*" data-view="(codex|fx)"/g) || [];
+    if (tabs.length !== 2) fail(`index.html: expected the codex and fx tabs, found ${tabs.length}`);
+    html = html.replace(/(<a class="tab" href=")[^"]*(" data-view="(codex|fx)")/g,
+        (_, open, close, view) => `${open}${home}#${view === 'fx' ? 'fx' : ''}${close}`);
     // Static texts the script would fill in.
     html = html.replace(/(<([a-z0-9]+)\b[^>]*\bdata-text="([^"]+)"[^>]*>)[^<]*(<\/\2>)/gi,
         (_, open, tag, key, close) => `${open}${escapeHtml(t(key))}${close}`);
     html = html.replace(/(<[a-z0-9]+\b[^>]*\bdata-placeholder="([^"]+)")/gi,
         (_, open, key) => `${open} placeholder="${escapeHtml(t(key))}"`);
-    // On an item page the auto choice is the page's language; the home page keeps its plain label.
-    if (page.item) {
-        html = replaceOnce(html, /(<option value="auto" id="autoOption">)[^<]*(<\/option>)/,
-            `$1${escapeHtml(t('autoDetect', { lang: page.language === 'kr' ? '한국어' : 'English' }))}$2`, 'auto language option');
-    }
+    // The auto choice follows the page's language and names it.
+    html = replaceOnce(html, /(<option value="auto" id="autoOption">)[^<]*(<\/option>)/,
+        `$1${escapeHtml(t('autoDetect', { lang: page.language === 'kr' ? '한국어' : 'English' }))}$2`, 'auto language option');
     const counted = codex.ITEMS.filter(indexable).length;
     html = replaceOnce(html, /(<p class="count" id="resultCount"[^>]*>)(<\/p>)/, `$1${escapeHtml(t('itemCount', { n: counted }))}$2`, 'result count');
     html = replaceOnce(html, /(<div id="groups">)(<\/div>)/, () => `<div id="groups">${codex.groupsHtml(true)}</div>`, 'item groups');
@@ -171,7 +209,10 @@ function renderPage(page) {
     // Item pages leave it empty, as the script does, so they do not all repeat the list.
     const catalog = page.item ? '' : codex.catalogHtml(false);
     html = replaceOnce(html, /(<div id="catalog">)(<\/div>)/, (_, open, close) => `${open}${catalog}${close}`, 'text list');
-    return html;
+    // What the page says, for telling search engines which pages changed (see below):
+    // its head and its own content, not the tiles every page shares or the build ID.
+    const content = [headBlock(page), page.item ? detail : catalog].join('\n');
+    return { html, fingerprint: crypto.createHash('sha256').update(content).digest('hex').slice(0, 20) };
 }
 
 // ---------- text files for AI assistants ----------
@@ -218,7 +259,7 @@ function fullText(language) {
         `# ${SITE_NAMES[language]} (${SITE_NAMES[other]}) - ${t('subtitle')}`,
         '', `> ${t('metaHome')}`,
         '', `${t('introText')} ${t('required')}: ${LINKS.required.name} (${LINKS.required.url})`,
-        '', `- ${t('subtitle')}: ${ORIGIN}/`,
+        '', `- ${t('subtitle')}: ${homeUrl(language)}`,
         `- ${t('workshop')}: ${LINKS.workshop}`,
         `- ${LANGUAGE_NAMES[other]}: ${fullTextUrl(other)}`
     ];
@@ -252,7 +293,7 @@ function indexText() {
             lines.push(`- [${text.name}${text.otherName ? ` / ${text.otherName}` : ''}](${pageUrl(item, 'en')}): ${metaLine(text)}. ${summary}`);
         }
     }
-    lines.push('', '## Optional', '', `- [${t('workshop')}](${LINKS.workshop})`, `- [${t('subtitle')}](${ORIGIN}/)`);
+    lines.push('', '## Optional', '', `- [${t('workshop')}](${LINKS.workshop})`, `- [${t('subtitle')}](${homeUrl('en')})`);
     return `${lines.join('\n')}\n`;
 }
 
@@ -270,25 +311,57 @@ for (const item of codex.ITEMS) {
     slugs.set(slug, item.key);
 }
 
-const sitemap = [`${ORIGIN}/`];
+// ---------- what changed since the live site ----------
+const TODAY = new Date().toISOString().slice(0, 10);
+const PREVIOUS = (() => {
+    if (!ARGS.previous) return {};
+    try {
+        const state = JSON.parse(fs.readFileSync(ARGS.previous, 'utf8'));
+        if (state && state.version === 1 && state.pages && typeof state.pages === 'object') return state.pages;
+        console.warn(`prerender: ${ARGS.previous} is not a page state; every page counts as changed`);
+    } catch (error) {
+        console.warn(`prerender: cannot read ${ARGS.previous} (${error.message}); every page counts as changed`);
+    }
+    return {};
+})();
+const sitemap = [];
+const pageState = {};
 let written = 0;
 
-// The home page keeps choosing its language from the browser; its HTML is Korean.
-codex.setLanguage('kr');
-write('index.html', renderPage({
-    language: 'kr',
-    // Both names, since a crawler that never runs the script sees only this title.
-    title: `${t('siteName')} (Conch's Blessing) - ${t('subtitle')}`,
-    description: t('metaHome'),
-    url: `${ORIGIN}/`,
-    textIndex: true,
-    verification: config.verification,
-    structured: {
-        '@context': 'https://schema.org', '@type': 'WebSite', name: "Conch's Blessing",
-        alternateName: '소라고둥의 축복', url: `${ORIGIN}/`, inLanguage: ['ko', 'en']
-    }
-}));
-written += 1;
+function writePage(relative, page) {
+    const { html, fingerprint } = renderPage(page);
+    write(relative, html);
+    written += 1;
+    if (page.noindex) return;
+    const before = PREVIOUS[page.url];
+    const same = before && before.hash === fingerprint && /^\d{4}-\d{2}-\d{2}$/.test(before.lastmod || '');
+    pageState[page.url] = { hash: fingerprint, lastmod: same ? before.lastmod : TODAY };
+    sitemap.push(page.url);
+}
+
+// The home page in each language: / is Korean and en/ English, whatever the reader's
+// browser says, and each names the other as its alternate. Google takes the site name
+// from / alone, so only / carries the WebSite markup (and the ownership meta tags).
+const homeAlternates = [['ko', homeUrl('kr')], ['en', homeUrl('en')], ['x-default', homeUrl('en')]];
+for (const language of Object.keys(LANGUAGES)) {
+    codex.setLanguage(language);
+    const korean = language === 'kr';
+    writePage(path.join(LANGUAGES[language].dir, 'index.html'), {
+        language,
+        base: LANGUAGES[language].homeBase,
+        // The running page sets the same title (script.js), since Google shows the rendered one.
+        title: t('homeTitle'),
+        description: t('metaHome'),
+        url: homeUrl(language),
+        alternates: homeAlternates,
+        textIndex: true,
+        verification: korean ? config.verification : null,
+        structured: korean ? {
+            '@context': 'https://schema.org', '@type': 'WebSite', name: '소라고둥의 축복',
+            alternateName: ["Conch's Blessing", '소라고둥의 축복 공식 도감'], url: homeUrl('kr'), inLanguage: ['ko', 'en']
+        } : null
+    });
+}
 
 for (const language of Object.keys(LANGUAGES)) {
     codex.setLanguage(language);
@@ -297,7 +370,7 @@ for (const language of Object.keys(LANGUAGES)) {
         const sprite = item.gfx && fs.existsSync(path.join(SITE, item.gfx)) ? `${ORIGIN}/${item.gfx}` : '';
         const alternates = indexable(item)
             ? [['ko', pageUrl(item, 'kr')], ['en', pageUrl(item, 'en')], ['x-default', pageUrl(item, 'en')]] : [];
-        write(path.join(LANGUAGES[language].dir, 'items', codex.itemSlug(item.key), 'index.html'), renderPage({
+        writePage(path.join(LANGUAGES[language].dir, 'items', codex.itemSlug(item.key), 'index.html'), {
             language, item, url, alternates,
             base: LANGUAGES[language].base,
             // Work-in-progress pages exist so their links work, but stay out of search.
@@ -308,30 +381,40 @@ for (const language of Object.keys(LANGUAGES)) {
             structured: {
                 '@context': 'https://schema.org', '@type': 'BreadcrumbList',
                 itemListElement: [
-                    { '@type': 'ListItem', position: 1, name: t('pageTitle'), item: `${ORIGIN}/` },
+                    { '@type': 'ListItem', position: 1, name: t('pageTitle'), item: homeUrl(language) },
                     { '@type': 'ListItem', position: 2, name: codex.itemName(item), item: url }
                 ]
             }
-        }));
-        written += 1;
-        if (indexable(item)) sitemap.push(url);
+        });
     }
 }
 
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${sitemap.map(loc => `  <url><loc>${escapeHtml(loc)}</loc></url>`).join('\n')}
+${sitemap.map(loc => `  <url><loc>${escapeHtml(loc)}</loc><lastmod>${pageState[loc].lastmod}</lastmod></url>`).join('\n')}
 </urlset>
 `);
+write('page-state.json', `${JSON.stringify({ version: 1, pages: pageState }, null, 1)}\n`);
+const changed = sitemap.filter(url => !PREVIOUS[url] || PREVIOUS[url].hash !== pageState[url].hash);
+if (ARGS.changed) fs.writeFileSync(ARGS.changed, changed.map(url => `${url}\n`).join(''), 'utf8');
+
+// IndexNow proves the site's ownership with a file named after its key, at the root.
+const INDEXNOW_KEY = String(config.indexNowKey || '');
+if (INDEXNOW_KEY) {
+    if (!/^[A-Za-z0-9-]{8,128}$/.test(INDEXNOW_KEY)) fail('seo.json indexNowKey must be 8-128 letters, digits or dashes');
+    write(`${INDEXNOW_KEY}.txt`, INDEXNOW_KEY);
+}
 
 write('llms.txt', indexText());
 write('llms-full.txt', fullText('kr'));
 write(path.join(LANGUAGES.en.dir, 'llms-full.txt'), fullText('en'));
 
-// The 14 MB upgrade player is only ever shown inside the codex.
+// The 14 MB upgrade player is only ever shown inside the codex; page-state.json is the
+// build's own bookkeeping.
 write('robots.txt', `User-agent: *
 Allow: /
 Disallow: /upgrade-player.html
+Disallow: /page-state.json
 
 Sitemap: ${ORIGIN}/sitemap.xml
 `);
@@ -348,4 +431,4 @@ if (fs.existsSync(verificationDir)) {
     }
 }
 
-console.log(`prerender: ${written} pages, ${sitemap.length} sitemap URLs${copied.length ? `, verification files: ${copied.join(', ')}` : ''}`);
+console.log(`prerender: ${written} pages, ${sitemap.length} sitemap URLs, ${changed.length} changed since ${ARGS.previous ? 'the live site' : 'nothing (no --previous)'}${copied.length ? `, verification files: ${copied.join(', ')}` : ''}`);

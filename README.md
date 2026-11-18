@@ -42,20 +42,29 @@ node tests/browser.cjs http://127.0.0.1:8766/
 The check exercises composition/input events without replacing the focused
 search node, caret retention, Korean/English matching, no-match/clear behavior,
 all generated synergy images, upgrade images, localized evolution conditions,
-pin/hover precedence, preview size/scrolling, desktop/mobile section order, and
-the prerendered item pages.
+pin/hover precedence, preview size/scrolling, desktop/mobile section order, the
+prerendered item pages, and the home pages' languages: `/` stays Korean for an
+English browser and `/en/` English for a Korean one, the language link floats
+without moving the layout, and only a saved choice moves the reader.
 
 ## Search engines
 
-`prerender.cjs` writes a page for every item (`/items/<slug>/`, English under
-`/en/items/<slug>/`) with its title, description and full detail in the HTML,
-plus `sitemap.xml` and `robots.txt`. For AI assistants, which read pages as text
-and skip the icon tiles, the home page holds a collapsed text list of every item,
+`prerender.cjs` writes the home page in Korean at `/` and in English at `/en/`,
+and a page for every item (`/items/<slug>/`, English under `/en/items/<slug>/`)
+with its title, description and full detail in the HTML, plus `sitemap.xml` and
+`robots.txt`. The address fixes each page's language, and each page names its
+other-language page as an alternate. For AI assistants, which read pages as text
+and skip the icon tiles, the home pages hold a collapsed text list of every item,
 and `llms.txt`, `llms-full.txt` (Korean) and `en/llms-full.txt` hold every item's
 whole detail; telling an assistant to read `https://tboi.rnen.kr/llms-full.txt`
 gives it the full codex in one file. The site address and the meta-tag codes that
 Google Search Console, Naver Search Advisor and Bing Webmaster Tools give for
 ownership go in `seo.json`; their file method uses `verification/`.
+
+So that search engines (and the assistants that search them) pick up changes
+quickly, each deploy compares the pages with the live `page-state.json`: unchanged
+pages keep their sitemap `<lastmod>`, and the changed ones are sent to IndexNow
+(Bing, Naver, Yandex and others) with the key in `seo.json`.
 
 Magic Conch routes use the source registry's origin and answer flag for both
 vanilla and mod origins. Separate evolution routes use the source locales'

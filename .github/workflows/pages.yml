@@ -13,6 +13,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      changed_urls: ${{ steps.prerender.outputs.urls }}
+      indexnow_key: ${{ steps.prerender.outputs.key }}
+      origin: ${{ steps.prerender.outputs.origin }}
     steps:
       - name: Checkout site repo (cb_site)
         uses: actions/checkout@v4
@@ -106,20 +110,57 @@ jobs:
         with:
           node-version: '20'
 
-      # 검색엔진용: 아이템마다 items/<slug>/ (영어 en/items/<slug>/) 정적 페이지,
-      # sitemap.xml, robots.txt, verification/의 소유 확인 파일을 build에 쓴다.
+      # 검색엔진용: 한국어 메인 / 와 영어 메인 en/, 아이템마다 items/<slug>/
+      # (영어 en/items/<slug>/) 정적 페이지, sitemap.xml, robots.txt, IndexNow 키 파일,
+      # verification/의 소유 확인 파일을 build에 쓴다.
       # AI 도우미용: 모든 아이템을 글로 담은 llms.txt, llms-full.txt(영어 en/)도 쓴다.
       # 페이지는 script.js의 렌더 함수로 그리므로 도감과 같은 내용이다.
+      # 지금 배포된 page-state.json과 비교해 내용이 그대로인 페이지는 sitemap의 lastmod를
+      # 유지하고, 바뀐 페이지만 배포 뒤 IndexNow로 알린다. 받지 못하면 모두 바뀐 것으로 본다.
       - name: Prerender pages for search engines
+        id: prerender
         run: |
-          node prerender.cjs build
-          for f in robots.txt sitemap.xml llms.txt llms-full.txt en/llms-full.txt items/kronos/index.html en/items/kronos/index.html; do
+          ORIGIN="$(node -p "require('./seo.json').origin")"
+          ORIGIN="${ORIGIN%/}"
+          KEY="$(node -p "require('./seo.json').indexNowKey || ''")"
+          if curl -fsSL --max-time 30 "$ORIGIN/page-state.json" -o previous-page-state.json; then
+            node prerender.cjs build --previous previous-page-state.json --changed changed-urls.txt
+          else
+            echo "::warning::could not fetch $ORIGIN/page-state.json; every page counts as changed"
+            node prerender.cjs build --changed changed-urls.txt
+          fi
+          for f in robots.txt sitemap.xml page-state.json llms.txt llms-full.txt en/llms-full.txt index.html en/index.html items/kronos/index.html en/items/kronos/index.html; do
             test -s "build/$f" || { echo "::error::build/$f is missing"; exit 1; }
           done
-          grep -q 'rel="canonical"' build/items/kronos/index.html
-          # 홈의 글 목록이 첫 아이템만이 아니라 다른 아이템의 효과도 담는지
-          grep -q 'class="catalog-name" href="items/kronos/"' build/index.html
-          grep -q 'items/kronos/' build/llms-full.txt
+          # 빠진 것이 있으면 무엇이 빠졌는지 알리고 멈춘다.
+          need() { grep -qF -- "$2" "build/$1" || { echo "::error::build/$1 lacks: $2"; exit 1; }; }
+          need items/kronos/index.html 'rel="canonical"'
+          # 메인의 언어는 주소가 정한다: / 는 한국어, en/ 는 영어이고 서로를 hreflang으로 잇는다.
+          need index.html '<html lang="ko" data-page-lang="kr">'
+          need index.html "<link rel=\"canonical\" href=\"$ORIGIN/\">"
+          need index.html "<link rel=\"alternate\" hreflang=\"en\" href=\"$ORIGIN/en/\">"
+          need index.html '"@type":"WebSite"'
+          need en/index.html '<html lang="en" data-page-lang="en">'
+          need en/index.html "<link rel=\"canonical\" href=\"$ORIGIN/en/\">"
+          need en/index.html "<link rel=\"alternate\" hreflang=\"ko\" href=\"$ORIGIN/\">"
+          need en/index.html "<link rel=\"alternate\" hreflang=\"en\" href=\"$ORIGIN/en/\">"
+          need en/index.html "<link rel=\"alternate\" hreflang=\"x-default\" href=\"$ORIGIN/en/\">"
+          need en/index.html '<a class="brand" href="en/">'
+          need en/items/kronos/index.html "\"position\":1,\"name\":\"Conch's Blessing Codex\",\"item\":\"$ORIGIN/en/\""
+          need sitemap.xml "<loc>$ORIGIN/en/</loc>"
+          # 메인의 글 목록이 첫 아이템만이 아니라 다른 아이템의 효과도 담고, 영어 메인은 영어 아이템 페이지로 잇는지
+          need index.html 'class="catalog-name" href="items/kronos/"'
+          need en/index.html 'class="catalog-name" href="en/items/kronos/"'
+          need llms-full.txt 'items/kronos/'
+          if [ -n "$KEY" ]; then need "$KEY.txt" "$KEY"; fi
+          # 대입문으로 따로 만들어야 실패할 때 단계가 멈춘다 (echo "$(...)" 안의 실패는 묻힌다).
+          URLS="$(node -e "console.log(JSON.stringify(require('fs').readFileSync('changed-urls.txt', 'utf8').split('\n').filter(Boolean)))")"
+          echo "$(node -p "JSON.parse(process.argv[1]).length" "$URLS") changed pages since the live site"
+          {
+            echo "urls=$URLS"
+            echo "key=$KEY"
+            echo "origin=$ORIGIN"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -138,3 +179,25 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+      # 바뀐 페이지를 IndexNow로 알린다. 받은 검색엔진(Bing, 네이버, Yandex 등)이 서로
+      # 나눠 가지며, ChatGPT 검색과 Copilot은 Bing 색인을 쓴다. 키 파일이 배포된 뒤라야
+      # 소유가 확인되므로 배포 다음에 보낸다. 요청이 거절되면(키·주소 오류) 실패로,
+      # 서비스가 잠시 받지 못하면 경고로 남긴다.
+      - name: Notify IndexNow of changed pages
+        if: needs.build.outputs.indexnow_key != ''
+        env:
+          URLS: ${{ needs.build.outputs.changed_urls }}
+          KEY: ${{ needs.build.outputs.indexnow_key }}
+          ORIGIN: ${{ needs.build.outputs.origin }}
+        run: |
+          COUNT="$(node -p "JSON.parse(process.env.URLS || '[]').length")"
+          if [ "$COUNT" -eq 0 ]; then echo "No page changed; nothing to send"; exit 0; fi
+          BODY="$(node -p "const o = process.env.ORIGIN; JSON.stringify({ host: new URL(o).host, key: process.env.KEY, keyLocation: o + '/' + process.env.KEY + '.txt', urlList: JSON.parse(process.env.URLS) })")"
+          STATUS="$(curl -sS --max-time 60 -o response.txt -w '%{http_code}' -X POST https://api.indexnow.org/indexnow \
+            -H 'Content-Type: application/json; charset=utf-8' --data "$BODY")" || STATUS="000"
+          case "$STATUS" in
+            200|202) echo "IndexNow took $COUNT changed pages ($STATUS)" ;;
+            400|403|422) echo "::error::IndexNow rejected the request ($STATUS): $(cat response.txt 2>/dev/null)"; exit 1 ;;
+            *) echo "::warning::IndexNow did not take the pages ($STATUS): $(cat response.txt 2>/dev/null)" ;;
+          esac

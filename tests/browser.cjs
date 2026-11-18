@@ -105,8 +105,19 @@ const fs = require('node:fs');
     assert.equal(await page.locator('.tile[data-key="LIVE_EYE"]').evaluate(node => node.classList.contains('dim')), false);
     console.log('PASS upgrade source/result sprites and Korean vanilla origin search');
 
+    // Choosing a language opens this page at that language's address (/ or en/),
+    // keeping the open item's #KEY.
     async function checkRoutes(language) {
-        await page.selectOption('#languageSelect', language);
+        const home = new URL(language === 'en' ? 'en/' : './', base).pathname;
+        const hash = new URL(page.url()).hash;
+        if (new URL(page.url()).pathname !== home) {
+            await Promise.all([
+                page.waitForURL(url => new URL(url).pathname === home, { waitUntil: 'networkidle' }),
+                page.selectOption('#languageSelect', language)
+            ]);
+        }
+        assert.ok(hash.length > 1 && new URL(page.url()).hash === hash, `the open item (${hash}) goes along to the other language`);
+        assert.equal(await page.evaluate(() => window.ConchBlessing.getDisplayLanguage()), language);
         const routes = await page.evaluate(() => {
             const failures = [];
             let count = 0;
@@ -175,9 +186,14 @@ const fs = require('node:fs');
         assert.equal(item.badge, '콘솔 전용', `${item.key} has no console badge`);
         assert.ok(item.obtain.includes('디버그 콘솔'), `${item.key} lacks the console note`);
     }
-    const consoleGroup = await page.evaluate(() => [...document.querySelectorAll('.group[data-group="console"] .tile')]
-        .map(tile => tile.dataset.key).sort().join(','));
-    assert.equal(consoleGroup, 'AZURE_DRAGON,INF_D6', 'only console items are in the console group');
+    // The group holds exactly the registry's console = true items (Inf D6, Azure Dragon,
+    // the Conch Certificate since 2026-11-11), whatever the mod adds next.
+    const consoleGroup = await page.evaluate(() => ({
+        shown: [...document.querySelectorAll('.group[data-group="console"] .tile')].map(tile => tile.dataset.key).sort().join(','),
+        expected: Object.entries(items).filter(([, item]) => item.console === true && !item.workingnowflag).map(([key]) => key).sort().join(',')
+    }));
+    assert.ok(consoleGroup.expected.includes('AZURE_DRAGON') && consoleGroup.expected.includes('INF_D6'), 'console items in the data');
+    assert.equal(consoleGroup.shown, consoleGroup.expected, 'only console items are in the console group');
     await page.evaluate(() => window.ConchBlessing.select('TYRFING'));
     assert.equal(await page.evaluate(() => document.querySelector('.tile[data-key="TYRFING"]')?.closest('.group')?.dataset.group),
         'collectibles', 'a hidden item that a run can still give stays with the collectibles');
@@ -349,15 +365,16 @@ const fs = require('node:fs');
     console.log('PASS desktop/mobile layout and no browser errors');
 
     // Item pages written by prerender.cjs: the item and its text are in the HTML itself,
-    // the page's language is the auto choice there, and the codex takes over as usual.
+    // the address fixes the page's language, and the codex takes over as usual.
     const seoPage = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
     seoPage.on('pageerror', error => errors.push(error.message));
     const raw = await (await seoPage.request.get(`${base}items/kronos/`)).text();
     assert.ok(raw.includes('<link rel="canonical" href="https://') && raw.includes('/items/kronos/"'), 'canonical link');
     assert.ok(raw.includes('<html lang="ko" data-page-lang="kr" data-page-item="KRONOS">'));
     assert.ok(raw.includes('<h1>크로노스</h1>') && raw.includes('href="items/live-eye/"'), 'item detail (as the h1) and tile links in the HTML');
+    assert.ok(!raw.includes('brand-title') && raw.includes('<a class="brand" href="./">'), "an item page's h1 is its item, not the logo");
     await seoPage.goto(`${base}items/kronos/`, { waitUntil: 'networkidle' });
-    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 - 아이템 도감');
+    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 도감');
     assert.equal(await seoPage.locator('#detailPanel h1').textContent(), '크로노스');
     assert.equal(new URL(seoPage.url()).pathname, '/items/kronos/', 'opening the page item keeps the address');
     // Phone width (how search engines read pages): the item is the top of the page,
@@ -368,24 +385,174 @@ const fs = require('node:fs');
     assert.ok(await seoPage.locator('#detailPanel h1').isVisible(), 'page item visible at phone width');
     assert.ok(await seoPage.evaluate(() => document.getElementById('detailPanel').getBoundingClientRect().top
         < document.querySelector('.codex').getBoundingClientRect().top), 'page item above the tiles');
-    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 - 아이템 도감');
+    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 도감');
     assert.equal(await seoPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await seoPage.locator('.tile[data-key="LIVE_EYE"]').click();
     assert.equal(await seoPage.locator('#dialogBody h2').textContent(), '살아있는 눈', 'other items open in the sheet');
     await seoPage.locator('#dialogClose').click();
-    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 - 아이템 도감', 'closing the sheet returns to the page item');
+    assert.equal(await seoPage.title(), '크로노스 (Kronos) | 소라고둥의 축복 도감', 'closing the sheet returns to the page item');
     await seoPage.setViewportSize({ width: 1280, height: 900 });
+    // English item pages lead to English pages only: the logo, the tabs and the breadcrumb's home.
+    const rawEnglish = await (await seoPage.request.get(`${base}en/items/f-minus/`)).text();
+    assert.ok(rawEnglish.includes('<a class="brand" href="en/">') && rawEnglish.includes('<a class="tab" href="en/#fx"'), 'English logo and tab links');
+    assert.ok(/"position":1,"name":"Conch's Blessing Codex","item":"https:\/\/[^"]+\/en\/"/.test(rawEnglish), 'English breadcrumb starts at en/');
+    // F - reads the same in both languages, so no other name follows it.
+    assert.ok(rawEnglish.includes('<meta name="description" content="F -: Trinket item in Conch&#39;s Blessing, a Binding of Isaac mod. “'),
+        'description starts with the definition');
     await seoPage.goto(`${base}en/items/f-minus/`, { waitUntil: 'networkidle' });
     assert.equal(await seoPage.locator('#detailPanel h1').textContent(), 'F -');
+    assert.equal(await seoPage.title(), "F - | Conch's Blessing Codex");
     const evolution = seoPage.locator('#detailPanel a.link[data-goto="C_MINUS"]').first();
     assert.equal(await evolution.getAttribute('href'), 'en/items/c-minus/');
     await evolution.click();
     assert.equal(await seoPage.locator('#detailPanel h2').textContent(), 'C -', 'a plain click selects in place');
     assert.ok((await seoPage.title()).startsWith('C - | Conch'));
+    assert.equal(new URL(seoPage.url()).pathname, '/en/items/f-minus/', "selecting keeps the English page's address (not <base>'s)");
+    assert.equal(new URL(seoPage.url()).hash, '#C_MINUS');
     for (const file of ['robots.txt', 'sitemap.xml', 'llms.txt', 'llms-full.txt', 'en/llms-full.txt', 'favicon-192.png']) {
         assert.equal((await seoPage.request.get(`${base}${file}`)).status(), 200, file);
     }
     assert.deepEqual(errors, [], 'browser runtime errors on item pages');
     console.log('PASS item pages: HTML content, page language, in-place links, robots.txt and sitemap.xml');
+
+    // Home pages: the address fixes the language (/ Korean, en/ English) whatever the
+    // browser prefers, since Google renders pages with an English browser; each names the
+    // other as its alternate, and only a choice the reader saved moves them.
+    const raws = {
+        kr: await (await seoPage.request.get(base)).text(),
+        en: await (await seoPage.request.get(`${base}en/`)).text()
+    };
+    const origin = raws.kr.match(/<link rel="canonical" href="(https:\/\/[^/"]+)\/">/)?.[1];
+    assert.ok(origin, 'home canonical');
+    assert.ok(raws.kr.includes('<html lang="ko" data-page-lang="kr">'), '/ is Korean');
+    assert.ok(raws.en.includes('<html lang="en" data-page-lang="en">') && raws.en.includes('<base href="../">'), 'en/ is English');
+    assert.ok(raws.en.includes(`<link rel="canonical" href="${origin}/en/">`), 'en/ canonical');
+    for (const html of Object.values(raws)) {
+        for (const [hreflang, href] of [['ko', `${origin}/`], ['en', `${origin}/en/`], ['x-default', `${origin}/en/`]]) {
+            assert.ok(html.includes(`<link rel="alternate" hreflang="${hreflang}" href="${href}">`), `home hreflang ${hreflang}`);
+        }
+    }
+    assert.ok(raws.kr.includes('"@type":"WebSite","name":"소라고둥의 축복","alternateName":["Conch\'s Blessing","소라고둥의 축복 공식 도감"]'), 'WebSite names on /');
+    assert.ok(!raws.en.includes('"@type":"WebSite"'), 'no WebSite markup on en/');
+    assert.ok(raws.kr.includes('<h1 class="brand-title"><a class="brand" href="./">'), 'the logo is the h1 of /');
+    assert.ok(raws.en.includes('<h1 class="brand-title"><a class="brand" href="en/">'), 'the logo is the h1 of en/ and leads to en/');
+    assert.ok(raws.en.includes('class="tile') && raws.en.includes('href="en/items/live-eye/"'), 'English tiles');
+    assert.ok(raws.en.includes('class="catalog-name" href="en/items/kronos/"') && raws.en.includes('href="en/llms-full.txt"'), 'English text list');
+    const sitemapXml = await (await seoPage.request.get(`${base}sitemap.xml`)).text();
+    assert.ok(sitemapXml.includes(`<loc>${origin}/</loc>`) && sitemapXml.includes(`<loc>${origin}/en/</loc>`), 'both home pages in the sitemap');
+    assert.ok(/<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/.test(sitemapXml), 'sitemap lastmod');
+    const rawTitle = html => html.match(/<title>([^<]*)<\/title>/)[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+    console.log('PASS home pages: fixed language, canonical/hreflang, WebSite markup on / only, logo h1, English links on en/');
+
+    // A fresh reader (no saved choice) with a given browser language. Layout shifts are
+    // counted from the first paint, before any script of the page runs.
+    async function openHome(locale, path, viewport = { width: 1280, height: 900 }) {
+        const context = await browser.newContext({ locale, viewport });
+        await context.addInitScript(() => {
+            window.__cls = 0;
+            window.__shifts = [];
+            new PerformanceObserver(list => {
+                for (const entry of list.getEntries()) {
+                    if (entry.hadRecentInput) continue;
+                    window.__cls += entry.value;
+                    window.__shifts.push({ value: entry.value, nodes: entry.sources.map(source => source.node && (source.node.id || source.node.className || source.node.nodeName)) });
+                }
+            }).observe({ type: 'layout-shift', buffered: true });
+        });
+        const reader = await context.newPage();
+        reader.on('pageerror', error => errors.push(error.message));
+        await reader.goto(`${base}${path}`, { waitUntil: 'networkidle' });
+        await reader.waitForTimeout(600);
+        return { context, reader };
+    }
+    const homeState = reader => reader.evaluate(() => {
+        const hint = document.getElementById('languageHint');
+        const shown = Boolean(hint && !hint.hidden);
+        return {
+            lang: document.documentElement.lang, display: window.ConchBlessing.getDisplayLanguage(),
+            title: document.title, expectedTitle: getText('homeTitle', window.ConchBlessing.getDisplayLanguage()),
+            auto: document.getElementById('autoOption').textContent, choice: document.getElementById('languageSelect').value,
+            heading: document.querySelector('#detailPanel h2')?.textContent, firstNames: Object.values(items).find(item => !item.workingnowflag).names,
+            hint: shown ? { text: hint.querySelector('a').textContent, href: hint.querySelector('a').href, position: getComputedStyle(hint).position } : null,
+            cls: window.__cls, shifts: window.__shifts
+        };
+    });
+
+    // An English browser (as Google renders) still gets Korean at /, and a link to en/.
+    const english = await openHome('en-US', '');
+    let state = await homeState(english.reader);
+    assert.equal(state.lang, 'ko', '/ renders in Korean for an English browser');
+    assert.equal(state.display, 'kr');
+    assert.equal(state.title, state.expectedTitle, 'the running title is homeTitle');
+    assert.equal(state.title, rawTitle(raws.kr), 'the running title matches the prerendered one');
+    assert.equal(state.auto, '자동 (한국어)');
+    assert.equal(state.choice, 'auto');
+    assert.equal(state.heading, state.firstNames.kr, 'first item in Korean');
+    assert.deepEqual(state.hint && { text: state.hint.text, href: state.hint.href, position: state.hint.position },
+        { text: 'English version →', href: new URL('en/', base).href, position: 'fixed' }, 'English link for an English browser');
+    assert.equal(new URL(english.reader.url()).pathname, new URL(base).pathname, 'never moved by the browser language');
+    const withHint = state.cls;
+    // Closing it is remembered.
+    await english.reader.locator('#languageHint button').click();
+    assert.equal(await english.reader.locator('#languageHint').isHidden(), true);
+    await english.reader.reload({ waitUntil: 'networkidle' });
+    assert.equal(await english.reader.evaluate(() => Boolean(document.getElementById('languageHint') && !document.getElementById('languageHint').hidden)), false, 'closed hint stays closed');
+    await english.reader.waitForTimeout(600);
+    const withoutHint = (await homeState(english.reader)).cls;
+    assert.ok(withHint < 0.001 && Math.abs(withHint - withoutHint) < 0.0001, `the hint moves nothing (CLS ${withHint} with it, ${withoutHint} without)`);
+    await english.context.close();
+
+    // Phone width: the hint still floats over the page.
+    const phone = await openHome('en-US', '', { width: 390, height: 844 });
+    state = await homeState(phone.reader);
+    assert.ok(state.hint, 'hint at phone width');
+    assert.ok(state.cls < 0.001, `no layout shift at phone width (CLS ${state.cls}: ${JSON.stringify(state.shifts)})`);
+    assert.equal(await phone.reader.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'no sideways scroll with the hint');
+    await phone.context.close();
+
+    // A Korean browser gets English at en/, with a link to /, and no hint at /.
+    const korean = await openHome('ko-KR', 'en/');
+    state = await homeState(korean.reader);
+    assert.equal(state.lang, 'en', 'en/ renders in English for a Korean browser');
+    assert.equal(state.display, 'en');
+    assert.equal(state.title, state.expectedTitle, 'the running title is homeTitle');
+    assert.equal(state.title, rawTitle(raws.en), 'the running title matches the prerendered one');
+    assert.equal(state.auto, 'Auto (English)');
+    assert.equal(state.heading, state.firstNames.en, 'first item in English');
+    assert.equal(state.hint?.text, '한국어로 보기 →');
+    assert.equal(state.hint?.href, new URL(base).href, 'Korean link to /');
+    assert.ok(state.cls < 0.001, `no layout shift on en/ (CLS ${state.cls}: ${JSON.stringify(state.shifts)})`);
+    assert.equal(await korean.reader.evaluate(() => new URL(document.querySelector('.brand').href).pathname), '/en/', 'the English logo leads to en/');
+    await korean.reader.locator('.tile[data-key="TYRFING"]').click();
+    assert.equal(new URL(korean.reader.url()).pathname, '/en/', 'selecting keeps the en/ address');
+    assert.equal(new URL(korean.reader.url()).hash, '#TYRFING');
+    // The hint's link takes an item opened since along (the navigation itself is held back here).
+    await korean.reader.evaluate(() => document.addEventListener('click', event => event.preventDefault(), { once: true }));
+    await korean.reader.locator('#languageHint a').click();
+    assert.equal(await korean.reader.locator('#languageHint a').getAttribute('href'), `${new URL(base).href}#TYRFING`, 'the Korean link keeps the open item');
+    // Choosing Korean saves it and opens / with the open item.
+    await Promise.all([
+        korean.reader.waitForURL(url => new URL(url).pathname === '/', { waitUntil: 'networkidle' }),
+        korean.reader.selectOption('#languageSelect', 'kr')
+    ]);
+    assert.equal(new URL(korean.reader.url()).hash, '#TYRFING');
+    assert.equal(await korean.reader.evaluate(() => [localStorage.getItem('conch_blessing_language'), document.documentElement.lang].join()), 'kr,ko');
+    assert.equal(await korean.reader.evaluate(() => Boolean(document.getElementById('languageHint') && !document.getElementById('languageHint').hidden)), false, 'no hint once chosen');
+    // The saved choice moves the reader from an English address to the Korean one...
+    await korean.reader.goto(`${base}en/items/f-minus/`, { waitUntil: 'commit' });
+    await korean.reader.waitForURL(url => new URL(url).pathname === '/items/f-minus/', { waitUntil: 'networkidle' });
+    assert.equal(await korean.reader.locator('#detailPanel h1').textContent(), 'F -');
+    // ...and "auto" forgets it, keeping the address's language.
+    await korean.reader.selectOption('#languageSelect', 'auto');
+    assert.equal(await korean.reader.evaluate(() => localStorage.getItem('conch_blessing_language')), null);
+    assert.equal(new URL(korean.reader.url()).pathname, '/items/f-minus/');
+    await korean.reader.goto(`${base}en/`, { waitUntil: 'networkidle' });
+    assert.equal(new URL(korean.reader.url()).pathname, '/en/', 'no saved choice: en/ stays English');
+    assert.equal(await korean.reader.evaluate(() => document.documentElement.lang), 'en');
+    await korean.reader.goto(base, { waitUntil: 'networkidle' });
+    assert.equal(await korean.reader.evaluate(() => document.getElementById('languageHint')), null, 'no hint at / for a Korean browser');
+    await korean.context.close();
+    assert.deepEqual(errors, [], 'browser runtime errors on home pages');
+    console.log('PASS home languages: / Korean for en-US, en/ English for ko-KR, hint without layout shift, saved choice and auto');
     await browser.close();
 })().catch(error => { console.error(error); process.exit(1); });
